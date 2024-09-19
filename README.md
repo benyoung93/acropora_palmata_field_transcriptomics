@@ -23,4 +23,5 @@ Folder **spreadsheets** has spreadsheets needed within the rscripts.
 
 ![alt text](https://github.com/benyoung93/acropora_palmata_field_transcriptomics/blob/main/figs/filt_10countsgene_80percentsamples.png)
 
-**Figure 2**: Using filtering criteria of 10 counts per gene in 80% of samples again retains the identified surrogate variable and genet being the main driver of the variance.
+**Figure 2**: Using filtering criteria of 10 counts per gene in 80% of samples again retains the identified surrogate variable and genet being the main driver of the variance.  
+
