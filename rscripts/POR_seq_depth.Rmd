@@ -1,0 +1,49 @@
+---
+title: "POR_sample_summaries"
+output: html_document
+date: "2024-08-27"
+---
+
+```{r}
+library(tidyverse)
+```
+
+```{r}
+read.csv(file = "/Users/benyoung/Library/CloudStorage/Dropbox/research/NOAA_postdoc/projects/POR_master/manuscript/transcriptomic/sample_summaries/seq_samps.csv") -> seq_samps
+View(seq_samps)
+
+read.csv(file = "/Users/benyoung/Library/CloudStorage/Dropbox/research/NOAA_postdoc/projects/POR_master/manuscript/transcriptomic/sample_summaries/survey_metadata.csv") %>% 
+  mutate(bagnumber = paste0("bagnumber-apal-", Bag_number)) -> surv_md
+View(surv_md)
+```
+
+```{r}
+surv_md %>% 
+  dplyr::filter(!bagnumber %in% seq_samps$Sequenced_samples) %>% View()
+
+seq_samps %>% 
+  dplyr::filter(!Sequenced_samples %in% surv_md$bagnumber)
+```
+
+Okay so 5 samples were redos in the sequenced samples. 
+
+```{r}
+read.csv(file = "/Users/benyoung/Library/CloudStorage/Dropbox/research/NOAA_postdoc/projects/POR_master/manuscript/transcriptomic/sample_summaries/samp_for_Seq.csv") %>%
+  group_by(reef, Genotype, sampling_trip) %>% 
+  summarise(sum = n()) %>% View()
+```
+
+Getting the alignment rates from the salmon quant folders
+
+```{bash}
+cd /Users/benyoung/Library/CloudStorage/Dropbox/research/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/files_for_analysis/POR_quant
+
+## making the file with header columns
+echo "Sample,Mapping Rate" > ~/Desktop/alignment_rates.csv
+for dir in */; do # Loop through each directory in the current directory
+  sample=$(basename "$dir") # Extract the sample name (assuming the directory name is the sample name)
+  rate=$(grep "Mapping rate" "$dir/logs/salmon_quant.log" | awk -F ' = ' '{print $2}' | sed 's/%//') # Extract the mapping rate from the salmon_quant.log file
+  echo "$sample,$rate" >> ~/Desktop/alignment_rates.csv   # Append the sample name and mapping rate to the CSV file
+done
+```
+

@@ -1,0 +1,3589 @@
+---
+title: "Apal_outplant_rnaseq_full_pipeline"
+output: html_document
+date: "2023-01-09"
+---
+
+# *Section 1* - Raw Read Pipeline and Preperation for Analysis
+
+*1.A* - Adapter and low quality trimming 
+Using BBDUK.sh
+
+*1.B* - Alignment and Quantification
+Using the Acropora palmata transcriptome and Salmon
+
+*1.C* - Selecting Correct Salmon Quant Files for Analysis
+*1.C.1* - Identifying Files for Analysis between ln12 and ln3
+*1.C.2* - Reading in organised salmon quant files
+Some samples failed in original submission (ln12) and were redone (ln3), or had very low reads and were therefore re-sequenced (ln3). Therefore, I remove the low samples from original (ln12) and replace with deep sequenced (ln3). These organised salmon quant folders are then used for donwstream analyses. 
+
+*1.D* - Treatment File and Annotation File Fixing and Importing
+This just constitutes making sure only sequenced samples are kept, creating additional metadata variables, and matching up the count matrix to the treatment file. 
+
+
+```{r loading libraries for section 1, include = F}
+# library(tximport)
+# library(tidyverse)
+# library(DESeq2)
+# library(edgeR)
+# library(ggrepel)
+```
+
+##1.A - Adapter and low quality trimming  
+
+Done using bbduk and the recommended parameters from lexogen website - https://www.lexogen.com/quantseq-data-analysis/
+
+```{bash adapter and quality trimming using bbduk, include = F}
+#bbduk.sh -Xmx512m \
+#in=/scratch/projects/transcriptomics/ben_young/POR/tagseq/raw_reads/ln12/'"${PALPAL}"'.fastq \
+#out=/scratch/projects/transcriptomics/ben_young/POR/tagseq/host/trimmed_reads/'"${PALPAL}"'_tr.fastq \
+#ref=/nethome/bdy8/programs/bbmap/resources/polyA.fa.gz,/nethome/bdy8/programs/bbmap/resources/truseq_rna.fa.gz \
+#k=13 \
+#ktrim=r \
+#useshortkmers=T \
+#mink=5 \
+#qtrim=10 \
+#minlength=20
+```
+
+
+##1.B - Alignment and Quantification
+
+Done using the Acropora palmata transcriptome present in the genome files, and salmon which aligns then quantifies. 
+N.B. Salmon has parameters specific for 3` RNA-seq which are included below, please look at the salmon docs for what each parameter does. 
+
+```{bash salmon indexing of the Apal transcriptome, include = F}
+#/nethome/bdy8/programs/salmon-latest_linux_x86_64/bin/salmon \
+#index \
+#-t /nethome/bdy8/apal_genome/version3.1/Apalm_assembly_v3.1_200911.mrna.fasta \
+#-i /nethome/bdy8/apal_genome/Apalm_index \
+#-k 19
+```
+
+```{bash alignment and quantification using salmon, include = F}
+#/nethome/bdy8/programs/salmon-latest_linux_x86_64/bin/salmon quant \
+#-i /nethome/bdy8/apal_genome/Apalm_index \
+#-l SF \
+#-r /scratch/projects/transcriptomics/ben_young/POR/tagseq/host/trimmed_reads/'"${PALPAL}"'_tr.fastq \
+#--validateMappings \
+#--noLengthCorrection \
+#--softclip \
+#--minScoreFraction 0.0 \
+#--writeUnmappedNames u \
+#-o /scratch/projects/transcriptomics/ben_young/POR/tagseq/host/salmon/'"${PALPAL}"'_salmon
+```
+
+
+##1.C - Selecting Correct Salmon Quant Files for Analysis
+###1.C.1 - Identyfying Files for Analysis between ln12 and ln3
+
+```{r reading in treatment file to identify number of sequenced in ln12 and ln3, include = F}
+# read.csv("/Users/benjamin.d.young/Desktop/POR_master/analysis/transcriptomic/spreadsheets_for_analysis/treatment_file.csv") %>%
+#   mutate(SAL = c("salmon")) %>% 
+#   unite(., BN_salmon, c(Bag_number, SAL), sep = "_", remove = F) -> tfall
+# View(tfall)
+```
+
+```{r ln12 salmon quant samples, echo = F}
+# list.files(path = "/Users/benjamin.d.young/Desktop/POR_master/analysis/transcriptomic/files_for_analysis/POR_salmon_ln12//", full.names = F, pattern = "\\_salmon$") -> PPall_ln12
+# length(PPall_ln12)
+#View(PPall_ln12)
+```
+
+*333* samples in ln12
+
+```{r ln3 salmon quant samples, echo = F}
+# list.files(path = "/Users/benjamin.d.young/Desktop/POR_master/analysis/transcriptomic/files_for_analysis/POR_salmon_ln3//", full.names = F, pattern = "\\_salmon$") -> PPall_ln3
+# length(PPall_ln3)
+```
+
+*43* samples in ln3
+
+*374* samples total
+
+```{r data objects with ln12 and ln3 samples present to allow manual organisation, include = F}
+# tfall %>% 
+#   filter(BN_salmon %in% PPall_ln12) %>%
+#   mutate(Ln12_pres = c("yes")) %>% 
+#   full_join(tfall) %>% 
+#   replace_na(list(Ln12_pres="no")) %>% 
+#   dplyr::select(BN_salmon, Ln12_pres) -> lane12samples
+# 
+# tfall %>%
+#   filter(BN_salmon %in% PPall_ln3) %>%
+#   mutate(Ln3_pres = c("yes")) %>%
+#   full_join(tfall) %>% 
+#   replace_na(list(Ln3_pres = "no")) %>%
+#   dplyr::select(BN_salmon, Ln3_pres) -> lane3samples
+```
+
+```{r making data object with presence absence ln12 and ln3 and writing to a csv, include = F}
+# lane12samples %>% 
+#   full_join(lane3samples, by = "BN_salmon") -> ln123_samples
+# write.csv(ln123_samples, file = "/Users/benjamin.d.young/Desktop/POR_master/analysis/transcriptomic/r_generated_files/ln123_Samples.csv")
+```
+
+```{r checking lengths of everything, include = F}
+# nrow(tfall)
+# length(PPall_ln12)
+# length(PPall_ln3)
+# sum(length(PPall_ln12) + length(PPall_ln3))
+```
+
+Removed any redone samples in Ln12 that present in Ln3 
+In total 
+- 378 samples in treatment file
+- 2 samples failed completely 
+- 43 samples in ln3
+- 333 samples in Ln12
+This equals 374 samples, yay
+
+
+###1.C.2 - Reading in organised salmon quant files
+
+```{r making list object of organised salmon files, echo = F}
+# list.files(path = "/Users/benjamin.d.young/Desktop/POR_master/analysis/transcriptomic/files_for_analysis/POR_quant//",
+#            full.names = F,
+#            pattern = "\\_salmon$") -> PPall_all
+# length(PPall_all)
+```
+
+*374* samples in the organised file, this matches with prior steps. 
+
+```{r checking overlap of salmon folders in the treatment file, echo = F}
+# tfall %>%
+#   filter(BN_salmon %in% PPall) %>% nrow()
+```
+
+All samples in the organised salmon object are present in the treatment file. 
+
+```{r making salmon objects for reading in with tximport, include = F}
+# setwd("/Users/benjamin.d.young/Desktop/POR_master/analysis/transcriptomic/files_for_analysis/POR_quant//") # needs to be done here for tximport to work succesfully
+# PPall <- list.files(path = "/Users/benjamin.d.young/Desktop/POR_master/analysis/transcriptomic/files_for_analysis/POR_quant//", 
+#                     full.names = F, 
+#                     pattern = "\\_salmon$")
+# FILESall <- file.path(PPall, 
+#                       "quant.sf")
+# 
+# names(FILESall) <- PPall
+# head(FILESall)
+# length(FILESall)
+# View(FILESall)
+# all(file.exists(FILESall)) # this will show false unless you have set the working directory to the POR_quant one. 
+```
+
+```{bash generating tx to gene, include = F}
+#cd /Users/benyoung/Dropbox/NOAA_postdoc/bioinformatic_resources/genomes/apal_genome_for_projs
+#cat Apalm_assembly_notrna_v3.1_200911.gff3 | grep -v "#" | awk '$3=="mRNA"' | cut -f9 | tr -s ";" " " | awk '{print$1"\t"$2}' | sort | uniq | sed 's/ID=//g' | sed 's/Parent=//g' > /Users/benjamin.d.young/Desktop/POR_master/analysis/transcriptomic/spreadsheets_for_analysis/tx2gene_apal.tsv
+```
+
+Column 1 must be transcript ID (what in the salmon quant files)
+Column 2 must be the Gene ID
+
+```{r reading in transcript to gene so we can import to the gene level, echo = F}
+# read.table(file = "/Users/benjamin.d.young/Desktop/POR_master/analysis/transcriptomic/spreadsheets_for_analysis/tx2gene_apal.tsv") %>% 
+#   mutate(APAL = "Apalm_v3") %>% 
+#   unite(V1, c(APAL, V1), sep = "_") %>% 
+#   mutate(Transcript_ID = V1, 
+#          Gene_ID = V2) %>% 
+#   dplyr::select(-V1, -V2) -> tx2gene
+# tx2gene$Transcript_ID %>% unique() %>% length()
+# tx2gene$Gene_ID %>% unique() %>% length()
+#View(tx2gene)
+```
+
+Has 31,827 transcripts
+Has 29,258 genes
+
+```{r reading in salmon quant files using tximport and quanting to gene level, include = F}
+# setwd("/Users/benjamin.d.young/Desktop/POR_master/analysis/transcriptomic/files_for_analysis/POR_quant//")
+# txi.salmon.countall <- tximport(FILESall, 
+#                                 type = "salmon", 
+#                                 tx2gene = tx2gene)
+# 
+# txi.salmon.countall$counts -> POR_counts
+# View(POR_counts)
+```
+
+Here we have 29,181 genes. This is okay and below total genes, some may have been lost filtering. 
+*N.B.* Need to use the txi$counts for DeSeq2 (as recommended in vignette) as correcting the counts for gene length will induce a bias in your analysis. This isbecause the counts do not have length bias due to 3` RNA-seq being used (i.e. only the 3 prime end and not random length shearing as in traditional RNA-seq).
+
+
+##1.D - Treatment File and Annotation File Fixing and Importing
+
+```{r rereading in treatment file and making additional variables, echo = F}
+# read.csv("/Users/benjamin.d.young/Desktop/POR_master/analysis/transcriptomic/spreadsheets_for_analysis/treatment_file.csv") %>%
+#   mutate(SAL = c("salmon"), 
+#          TRIP = c("Trip")) %>% 
+#   unite(., BN_salmon, c(Bag_number, SAL), sep = "_", remove = F) %>%
+#   unite(., Samp_trip, c(TRIP, sampling_trip), sep = "_", remove = T) %>%
+#   mutate(Samp_trip = as.factor(Samp_trip),
+#          reef = as.factor(reef)) -> tfall
+```
+
+```{r filtering treatment file by samples in the count matrix, echo = F}
+# POR_counts %>%
+#   t() %>% 
+#   rownames() -> POR_samp
+# 
+# tfall %>% 
+#   filter(BN_salmon %in% POR_samp) -> tfall
+# View(tfall)
+```
+
+```{r making sure sasmple order matches between count and treatment file, echo = F}
+# matchup <- match(tfall$BN_salmon, colnames(POR_counts))
+# POR_counts  <- POR_counts[,matchup ]
+# all(tfall$BN_salmon == colnames(POR_counts))
+#View(treat_POR)
+#str(treat_POR)
+```
+
+```{r reading in depth and lon lat for clusters, echo = F}
+# read.csv(file = "/Users/benjamin.d.young/Desktop/POR_master/analysis/transcriptomic/spreadsheets_for_analysis/clus_frag_summary.csv") %>% 
+#   dplyr::select(2,3,5,6,12:15) %>% 
+#   dplyr::rename(., Cluster = Tag.) %>% 
+#   dplyr::mutate(reef = case_when(Site == "CF" ~ "cf", 
+#                                  Site == "GR" ~ "gr", 
+#                                  Site == "ND" ~ "ndr", 
+#                                  Site == "PI" ~ "pr")) %>%
+#   dplyr::select(-1, -4, -5) %>% 
+#   dplyr::group_by(reef, Genotype, Cluster) %>%
+#   dplyr::distinct() -> clus_depth
+# View(clus_depth)
+```
+
+```{r adding depth and lon lat to treatment file, echo = F}
+# tfall %>% left_join(clus_depth, 
+#                      by = c("reef", "Genotype", "Cluster")) -> tfall
+```
+
+```{r saving r data objects for easy loading and downstream analyses, include = GF}
+# save(POR_counts, 
+#      file = "/Users/benjamin.d.young/Desktop/POR_master/analysis/transcriptomic/r_saved_objects/POR_raw_counts.RData")
+# save(tfall, 
+#      file = "/Users/benjamin.d.young/Desktop/POR_master/analysis/transcriptomic/r_saved_objects/POR_treatment_file.RData")
+```
+
+*N.B.* Annotation file prepped in separate r script and is in the r_saved_object folder ready for analysis. 
+
+----------
+
+# *Section 2* - Map and Temperature Analysis
+
+*2.A* - Reef Site Plotting 
+
+*2.B* - SST Data Plotting 
+
+## 2.A - Reef Site Plotting 
+
+```{r map package loading, include = F}
+library(tidyverse)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(sf)
+library(ggspatial)
+library(ggOceanMapsData)
+library(ggOceanMaps)
+library(oce)
+library(marmap)
+library(cowplot)
+library(ggrepel)
+library(grid)
+```
+
+```{r getting country data, include = F}
+world <- ne_countries(scale = "medium", 
+                      returnclass = "sf")
+```
+
+```{r reading in site coordinate data, include = F}
+read.csv(file = "/Users/benjamin.d.young/Dropbox/NOAA_postdoc/projects/POR_master/analysis/survey_analysis/files_for_analysis/POR_site_coordinates.csv") %>% 
+  dplyr::filter(!Reef_name %in% c("Grecian Rocks")) -> reef_loc
+# View(reef_loc)
+```
+
+```{r getting bathemetry data, include = F}
+b = getNOAA.bathy(lon1 = -80.60, 
+                  lon2 = -80.0, 
+                  lat1 = 24.8, 
+                  lat2 = 25.5, 
+                  resolution = 1)
+
+bf <- fortify.bathy(b)
+# View(bf)
+```
+
+```{r main map generation, echo = F}
+kl_area <- ggplot(data = world) +
+  geom_sf(color = "black", fill = "antiquewhite") +
+  theme_bw() +
+  coord_sf(xlim = c(-80.66186, -80.07856),
+           ylim = c(24.94314, 25.3183)) +
+  geom_contour(
+    data = bf,
+    aes(x = x, y = y, z = z),
+    size = c(0.6),
+    breaks = c(-3),
+    color = "grey10"
+  ) +
+  geom_contour(
+    data = bf,
+    aes(x = x, y = y, z = z),
+    size = c(0.6),
+    breaks = c(-5),
+    color = "grey20"
+  ) +
+  geom_contour(
+    data = bf,
+    aes(x = x, y = y, z = z),
+    size = c(0.6),
+    breaks = c(-10),
+    color = "grey30"
+  ) +
+  geom_contour(
+    data = bf,
+    aes(x = x, y = y, z = z),
+    size = c(0.6),
+    breaks = c(-30),
+    color = "grey40"
+  ) +
+  geom_contour(
+    data = bf,
+    aes(x = x, y = y, z = z),
+    size = c(0.6),
+    breaks = c(-60),
+    color = "grey50"
+  ) +
+  geom_contour(
+    data = bf,
+    aes(x = x, y = y, z = z),
+    size = c(0.6),
+    breaks = c(-100),
+    color = "grey60"
+  ) +
+  geom_contour(
+    data = bf,
+    aes(x = x, y = y, z = z),
+    size = c(0.6),
+    breaks = c(-200),
+    color = "grey70"
+  ) +
+  geom_point(
+    data = reef_loc,
+    aes(x = Longitude, y = Latitude),
+    color = "red",
+    size = 4
+  ) +
+  geom_label_repel(
+    data = reef_loc,
+    aes(x = Longitude, y = Latitude,
+        label = Reef_name),
+    box.padding   = 0.35,
+    point.padding = 5,
+    segment.color = 'grey50'
+  ) +
+  theme(
+    panel.grid.major = element_line(
+      color = gray(.5),
+      linetype = "dashed",
+      size = 0.5
+    ),
+    panel.background = element_rect(fill = "aliceblue")
+  ) +
+  annotation_scale(location = "bl",
+                   width_hint = 0.5) +
+  annotation_north_arrow(
+    location = "bl",
+    which_north = "true",
+    pad_x = unit(0.3, "in"),
+    pad_y = unit(0.3, "in"),
+    style = north_arrow_fancy_orienteering
+  ) + 
+  xlab("Longitude") + 
+  ylab("Latitude")
+```
+
+```{r inset map plotting, echo = F}
+dt <- data.frame(lon = c(-80.66186, 
+                         -80.66186, 
+                         -80.07856, 
+                         -80.07856), 
+                 lat = c(24.94314, 
+                         25.3183, 
+                         25.3183, 
+                         24.94314))
+
+inset <- ggplot(data = world) +
+  geom_sf(color = "black",
+          fill = "antiquewhite") +
+  theme_bw() +
+  coord_sf(xlim = c(-83.68336, -79.43014),
+           ylim = c(24.27658,
+                    31.11157)) +
+  geom_polygon(
+    data = transform_coord(dt),
+    aes(x = lon,
+        y = lat),
+    color = "red",
+    fill = NA
+  ) +
+  theme(
+    panel.grid.major = element_line(
+      color = gray(.5),
+      linetype = "dashed",
+      size = 0.5,
+    ),
+    panel.background = element_rect(fill = "aliceblue"), 
+    text = element_text(size=8)
+  )
+```
+  
+```{r main map and inset plotting, echo = F, fig.width = 8, fig.height=4, fig.cap= "Fig1: Map showing samplign sites used for transcriptomic sample analysis"}
+kl_area
+print(inset,
+      vp = viewport(0.79,
+                    0.22,
+                    width = 0.3,
+                    height = 0.3))
+```
+
+
+## 2.B - SST Data Plotting  
+
+```{r temperature library loading, include = F}
+library(tidyverse)
+library(lubridate)
+```
+
+```{r reading in Reuben data, include = F}
+read.csv(file = "/Users/benyoung/Library/CloudStorage/Dropbox/research/NOAA_postdoc/projects/POR_master/analysis/survey_analysis/files_for_analysis/Young_Rosales_2018-2021_OISST_v2.csv") %>% View()
+  separate(
+    Date,
+    into = c("Year", "Month", "Day"),
+    sep = c(4, 6),
+    remove = T
+  ) %>%
+  dplyr::mutate(
+    Date = paste0(Day, "/", Month, "/", Year),
+    Date_posixct = parse_date_time(Date, c("dmy"))
+  ) %>%
+  pivot_longer(cols = 4:7,
+               names_to = "reefs",
+               values_to = "temperature_dcelcius") %>%
+  dplyr::select(-1:-3) %>%
+  mutate(
+    reef_plot = case_when(
+      reefs == "Carysfort_Reef" ~ "Carysfort",
+      reefs == "North_Dry_Rocks" ~ "North Dry Rocks",
+      reefs == "Grecian_Rocks" ~ "Grecian Rocks",
+      reefs == "Pickles_Reef" ~ "Pickles Reef"
+    )
+  ) -> sst_for_plotting
+View(sst_for_plotting)
+```
+
+```{r sst plot all dates, echo = F, fig.width=10, fig.height=2, echo = F, fig.cap="Fig 3: Sea surface temperature data provided by Reuben"}
+ggplot(data = sst_for_plotting %>% 
+         dplyr::filter(!reef_plot %in% "Grecian Rocks"),
+       aes(x = Date_posixct,
+           y = temperature_dcelcius,
+           color = reef_plot)) +
+  geom_line(size = 1) +
+  theme_bw() +
+  scale_y_continuous(limits = c(20, 32),
+                     breaks = seq(20, 32, by = 1)) +
+  scale_x_datetime(
+    limit = c(as.POSIXct(as.Date("2018-01-01")), as.POSIXct(as.Date("2020-01-01"))),
+    date_labels = "%b %y",
+    date_breaks = "month",
+    guide = guide_axis(n.dodge = 2)
+  ) + 
+  scale_color_manual(values = c("tan1", "firebrick3", "deepskyblue"), 
+                     name = "Reef Sites") +
+    #Sampling Trip 1
+  annotate(
+    "rect",
+    xmin = as.POSIXct(as.Date("2018-11-14")),
+    xmax = as.POSIXct(as.Date("2018-11-26")),
+    ymin =-Inf,
+    ymax = Inf,
+    alpha = .2, 
+    color = "black", 
+    fill = "grey55") + 
+  annotate("text", 
+           label = "Sampling Trip 1 \n (no RNA-seq data)", 
+           x = as.POSIXct(as.Date("2018-11-15")), 
+           y = 31, 
+           size = 5) + 
+  #Sampling Trip 2
+  annotate(
+    "rect",
+    xmin = as.POSIXct(as.Date("2019-02-28")),
+    xmax = as.POSIXct(as.Date("2019-03-05")),
+    ymin =-Inf,
+    ymax = Inf,
+    alpha = .2, 
+    color = "black", 
+    fill = "grey55") + 
+  annotate("text", 
+           label = "Sampling Trip 2 \n (RNA-seq data)", 
+           x = as.POSIXct(as.Date("2019-03-01")), 
+           y = 29, 
+           size = 5) + 
+  #Sampling Trip 3
+  annotate(
+    "rect",
+    xmin = as.POSIXct(as.Date("2019-06-26")),
+    xmax = as.POSIXct(as.Date("2019-07-02")),
+    ymin =-Inf,
+    ymax = Inf,
+    alpha = .2, 
+    color = "black", 
+    fill = "grey55") + 
+  annotate("text", 
+           label = "Sampling Trip 3 \n (RNA-seq data)", 
+           x = as.POSIXct(as.Date("2019-06-27")), 
+           y = 24, 
+           size = 5) + 
+  #Sampling Trip 4
+  annotate(
+    "rect",
+    xmin = as.POSIXct(as.Date("2019-09-25")),
+    xmax = as.POSIXct(as.Date("2019-09-26")),
+    ymin =-Inf,
+    ymax = Inf,
+    alpha = .2, 
+    color = "black", 
+    fill = "grey55") + 
+  annotate("text", 
+           label = "Sampling Trip 4 \n (RNA-seq data)", 
+           x = as.POSIXct(as.Date("2019-09-26")), 
+           y = 26, 
+           size = 5) + 
+  #Sampling Trip 5
+  annotate(
+    "rect",
+    xmin = as.POSIXct(as.Date("2019-11-18")),
+    xmax = as.POSIXct(as.Date("2019-11-26")),
+    ymin =-Inf,
+    ymax = Inf,
+    alpha = .2, 
+    color = "black", 
+    fill = "grey55") + 
+  annotate("text", 
+           label = "Sampling Trip 5 \n (RNA-seq data)", 
+           x = as.POSIXct(as.Date("2019-11-19")), 
+           y = 31, 
+           size = 5) + 
+  #2017-2018 Dry Season
+  annotate(
+    "rect",
+    xmin = as.POSIXct(as.Date("2018-01-01")),
+    xmax = as.POSIXct(as.Date("2018-05-15")),
+    ymin =-Inf,
+    ymax = Inf,
+    alpha = .2,
+    fill = "sienna1") + 
+  annotate("text", 
+           label = "Dry Season 2017-2018", 
+           x = as.POSIXct(as.Date("2018-03-15")), 
+           y = 20, 
+           size = 5) + 
+  #2018 Wet Season
+  annotate(
+    "rect",
+    xmin = as.POSIXct(as.Date("2018-05-16")),
+    xmax = as.POSIXct(as.Date("2018-10-15")),
+    ymin =-Inf,
+    ymax = Inf,
+    alpha = .2,
+    fill = "lightblue") + 
+  annotate("text", 
+           label = "Wet Season 2018", 
+           x = as.POSIXct(as.Date("2018-08-15")), 
+           y = 20, 
+           size = 5) + 
+  #2018-2019 Dry Season
+  annotate(
+    "rect",
+    xmin = as.POSIXct(as.Date("2018-10-16")),
+    xmax = as.POSIXct(as.Date("2019-05-16")),
+    ymin =-Inf,
+    ymax = Inf,
+    alpha = .2,
+    fill = "sienna1") + 
+  annotate("text", 
+           label = "Dry Season 2018-2019", 
+           x = as.POSIXct(as.Date("2019-02-15")), 
+           y = 20, 
+           size = 5) + 
+  #2019 Wet Season
+  annotate(
+    "rect",
+    xmin = as.POSIXct(as.Date("2019-05-16")),
+    xmax = as.POSIXct(as.Date("2019-10-15")),
+    ymin =-Inf,
+    ymax = Inf,
+    alpha = .2,
+    fill = "lightblue") + 
+  annotate("text", 
+           label = "Wet Season 2019", 
+           x = as.POSIXct(as.Date("2019-07-15")), 
+           y = 20, 
+           size = 5) + 
+  #2019 Wet Season
+  annotate(
+    "rect",
+    xmin = as.POSIXct(as.Date("2019-10-16")),
+    xmax = as.POSIXct(as.Date("2020-01-01")),
+    ymin =-Inf,
+    ymax = Inf,
+    alpha = .2,
+    fill = "sienna1") + 
+  annotate("text", 
+           label = "Dry Season 2019-2020", 
+           x = as.POSIXct(as.Date("2019-11-15")), 
+           y = 20, 
+           size = 5) + 
+  xlab("Month and Year") + 
+  ylab("Temperature (\u00B0C)")
+```
+
+
+----------
+# *Section 3* - RNA-Seq Analysis
+
+November 2018 - Samp trip 1
+February/March 2019 - Samp trip 2
+June 2019 - Samp trip 3
+September 2019 - Samp trip 4
+November 2019- Samp trip 5
+
+*3.A* - Filtering Low Counts
+  *3.A.1* - Low count sample filtering
+  *3.A.2* - Low count gene filtering
+  *3.A.3* - Sample Summaries
+  *3.A.4* - Growth Data Cleaning and Input
+Self explanatory
+
+*3.B* - PCA Analysis
+  *3.B.1* - With genet included
+  *3.B.2* - With genet variance removed
+Principal component analysis with varying levels of variance removed. 
+
+*3.C* - Hierarchical Clustering with Genet Removed
+  *3.C.1* - Hierarchical Clustering
+  *3.C.2* - PCA Analysis with Clusters Identified
+  *3.C.3* - PCA with Clusters Removed
+  *3.C.4* - PCA with Genet and Clusters Removed
+  
+*3.D* - PC1 Clust Analysis
+  *3.D.2* - Genes Driving the Batch Variable 
+  *3.D.3* - DeSeq Analysis PC1 Clust Genes
+
+*3.E* - Genet In Depth Analysis
+  *3.E.1* - Genet LRT Analysis and Heatmap Plotting
+  *3.E.2* - Genet GO Enrichment Analysis
+  *3.E.3* - Genet KEGG Enrichment Analysis
+  *3.E.4* - Genet DEGPatterns Analysis
+    *3.E.4.1* - Running DEGPatterns
+    *3.E.4.2* - GO Enrichment Analysis of Cluster Profiler Results
+    *3.E.4.3* - KEGG Enrichment Analysis of Cluster Profiler Results
+  *2.E.6* - Genet Comparison with DHE  
+    *2.E.6.1* - Prepping and Joining Two Studies
+    *2.E.6.2* - Initial PCA Analysis
+    *2.E.6.3* - Removing Clust and Health to see genet patterns
+    *2.E.6.4* - Removing Clust and Genotype to look at health
+
+*3.F* - WGCNA Analysis with Genet Variance Removed
+  *3.F.1* - WGCNA Pipeline
+  *3.F.2* - Complex Heatmap and Bargraph of Gene Counts
+  *3.F.3* - GO Enrichment of Modules
+  *3.F.4* - KEGG Enrichment of Modules
+
+```{r new package installing, include = F}
+# # remotes::install_github("tylermorganwall/rayshader")
+# if (!require("BiocManager", quietly = TRUE))
+#   install.packages("BiocManager")
+# 
+# BiocManager::install("decipher")
+```
+
+```{r loading libraries for section 2, include = F}
+# library(tximport)
+library(data.table)
+library(tidyverse)
+library(DESeq2)
+library(edgeR)
+library(ggrepel)
+library(WGCNA)
+library(DEGreport)
+library(PCAtools)
+library(venn)
+library(clusterProfiler)
+library(ComplexHeatmap)
+library(circlize)
+library(ape)
+library(dendextend)
+library(enrichplot)
+library(factoextra)
+library(lubridate)
+library(ggnewscale)
+library(dendextend)
+library(plotly)
+library(ggdendro)
+# library(rayshader)
+library(plotly)
+library(gMOIP)
+```
+
+```{r loading modified PCA functions, include = F}
+load("/Users/benyoung/Dropbox/research/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/r_saved_objects/pca23.RData")
+load("/Users/benyoung/Dropbox/research/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/r_saved_objects/pca34.RData")
+load("/Users/benyoung/Dropbox/research/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/r_saved_objects/pca45.RData")
+load("/Users/benyoung/Dropbox/research/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/r_saved_objects/pca56.RData")
+```
+
+```{r loading r objects from Section 1, include = F}
+load(file = "/Users/benyoung/Dropbox/research/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/r_saved_objects/POR_raw_counts.RData")
+load(file = "/Users/benyoung/Dropbox/research/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/r_saved_objects/POR_treatment_file.RData")
+load(file = "/Users/benyoung/Dropbox/research/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/r_saved_objects/POR_annotation_file.RData")
+```
+
+```{r Function for Formatting Bingo Heatmaps, include = F}
+pad27 <- function(x){
+  str_x = as.character(x)
+  digits = nchar(str_x)
+  toAdd = 7-digits
+  name = paste0('GO:',
+                strrep(0,toAdd),
+                x)
+  name
+}
+```
+
+
+##3.A - Filtering Low Counts
+###3.A.1 - Low count sample filtering
+
+```{r viewing low count samples, echo = F}
+# POR_counts %>%
+#   t() %>%
+#   as.data.frame() %>%
+#   dplyr::mutate(gene_counts = rowSums(
+#     POR_counts %>%
+#       t() %>%
+#       as.data.frame() %>%
+#       dplyr::select(starts_with("evm"))
+#   )) %>%
+#   rownames_to_column(var = "Sample_number") %>%
+#   dplyr::select(Sample_number, gene_counts) %>%
+#   arrange(gene_counts) %>% View()
+```
+
+```{r generating mean and median gene counts pre-filtering, echo = F}
+POR_counts %>%
+  t() %>%
+  as.data.frame() %>%
+  dplyr::mutate(gene_counts = rowSums(
+    POR_counts %>%
+      t() %>%
+      as.data.frame() %>%
+      dplyr::select(starts_with("evm"))
+  )) %>%
+  rownames_to_column(var = "Sample_number") %>%
+  dplyr::select(Sample_number, gene_counts) %>%
+  arrange(gene_counts) %>%
+  summarize(Average = mean(gene_counts),
+            Median = median(gene_counts),
+            Standard_Deviation = sd(gene_counts))
+```
+
+From "best practices" for 3 prime RNA-seq we can have lower total counts per sample. For this analysis I am removing all samples with total counts less than 950,000. 
+
+```{r generating filtering object of samples with less than 950000 total counts, echo = F}
+POR_counts %>%
+  t() %>%
+  as.data.frame() %>%
+  mutate(gene_counts = rowSums(POR_counts %>%
+                                 t() %>%
+                                 as.data.frame() %>%
+                                 dplyr::select(starts_with("evm")))) %>% 
+  rownames_to_column(var = "Sample_number") %>%
+  dplyr::select(Sample_number, gene_counts) %>%
+  arrange(gene_counts) %>%
+  filter(gene_counts < 950000) %>%
+  column_to_rownames(var = "Sample_number") %>%
+  rownames() -> lowcount_samps
+length(lowcount_samps)
+```
+
+Gives a total of *12* samples that need to be removed. 
+
+```{r filtering samples with less than 950000 total counts, echo = F}
+POR_counts %>% 
+  t() %>% 
+  as.data.frame() %>% 
+  rownames_to_column(var = "Samp") %>%
+  filter(!Samp %in% lowcount_samps) %>%
+  column_to_rownames(var = "Samp") %>% 
+  t() %>% 
+  as.matrix() -> POR_counts
+
+ncol(POR_counts)
+nrow(POR_counts)
+#View(DHE_counts)
+```
+
+```{r Post filtering read mean and median, echo = F}
+POR_counts %>% 
+  t() %>% 
+  as.data.frame() %>% 
+  mutate(gene_counts = rowSums(POR_counts %>%
+                                 t() %>%
+                                 as.data.frame() %>%
+                                 dplyr::select(starts_with("evm")))) %>% 
+  rownames_to_column(var = "Sample_number") %>%
+  dplyr::select(Sample_number, gene_counts) %>%
+  arrange(gene_counts) %>% 
+  summarize(Average = mean(gene_counts), 
+            Median = median(gene_counts),
+            Standard_Deviation = sd(gene_counts))
+```
+
+```{r removing the low total count samples from the treatment file, include = F}
+tfall %>% 
+  filter(!BN_salmon %in% lowcount_samps) %>% 
+  column_to_rownames(var = "BN_salmon") -> tfall
+#nrow(tfall)
+```
+
+```{r reordering tfall with count table after filtering of both objects, echo = F}
+matchup <- match(rownames(tfall), colnames(POR_counts))
+POR_counts  <- POR_counts[,matchup ]
+all(rownames(tfall) == colnames(POR_counts))
+```
+
+
+###3.A.2 - Low count gene filtering
+
+```{r Making DeSeq object for low gene count filtering, include = F}
+ddsall = DESeqDataSetFromMatrix(countData =  round(POR_counts), 
+                                tfall, 
+                                ~ Samp_trip + reef)
+```
+
+```{r counts per million filtering using dds object, include = F}
+# cpm filtering step and seeing what original VS filtered gene number left is
+cccall <- counts(ddsall)
+keep <- rowSums(cpm(cccall)>=4) >= 15
+cccall <- cccall[keep, ]
+
+cccall %>%
+  as.data.frame()  -> cccall
+```
+
+```{r comparing pre and post low count gene filtering, echo = F}
+nrow(ddsall)
+ncol(ddsall)
+nrow(cccall)
+ncol(cccall)
+```
+
+Original
+- 29,181 genes
+- 362 samples
+
+Low Count gene filter
+- 15,767 genes
+- 362 samples
+
+```{r generating dds object with low count genes removed, include = F}
+ddsall <-
+  DESeqDataSetFromMatrix(
+    countData = cccall,
+    colData = tfall,
+    design = ~ Samp_trip + reef
+  )
+```
+
+```{r making custom annotation file for bingo GO analysis with removed low count genes dataframe, include = F}
+annot_4_analysis %>% 
+  filter(Count_ID %in% rownames(cccall)) -> annot_filtered_2_15
+
+annot_filtered_2_15 %>% 
+  dplyr::select(Count_ID, GO_Terms_Swiss.Prot) %>% 
+  tidyr::drop_na() %>% 
+  dplyr::filter(!GO_Terms_Swiss.Prot %in% c("0")) %>%
+  tidyr::separate_rows(GO_Terms_Swiss.Prot) %>%
+  filter(!str_detect(GO_Terms_Swiss.Prot, 'GO')) %>%
+  unite(x, c(Count_ID, GO_Terms_Swiss.Prot), sep = " = ", remove = T) -> POR_CAF_GO
+# View(POR_CAF_GO)
+
+# write.table(POR_CAF_GO,
+#             file = "/Users/benjamin.d.young/Desktop/POR_master/analysis/transcriptomic/r_generated_files/apal_cafgo_v3.1_filt_POR.txt",
+#             quote=F,
+#             row.names=F,
+#             col.names=F)
+```
+
+*N.B* need to put this custom header line in the apal_cafgo file that was just created. Thus it has been hashed out so it doesnt write over the manually edited file. 
+
+
+###3.A.3 - Sample Summaries
+
+```{r summary of different groupings of samples, echo = F}
+# tfall %>%
+#   group_by(reef, Genotype, Samp_trip) %>% 
+#   summarise(count = n()) %>% View()
+```
+
+```{r}
+tfall %>%
+  group_by(reef) %>% 
+  na.omit() %>% 
+  summarise(min = min(ClusterDepth), 
+            max = max(ClusterDepth))
+```
+
+
+##3.B - PCA Analysis Initial Look
+
+```{r variance stabilised transformation, include=FALSE}
+vsdall <- vst(ddsall, blind=FALSE)
+```
+
+```{r Formating VST for PCAtools, include = F}
+PCA_tools_all <- assay(vsdall)
+
+rv <- rowVars(PCA_tools_all)
+select <- order(rv, 
+                decreasing = TRUE)[seq_len(min(500, 
+                                               length(rv)))]
+
+allsamps <- pca(PCA_tools_all[select,], 
+                metadata = tfall, 
+                removeVar = 0.10)
+```
+
+```{r Plots from PCAtools, fig.width=13, fig.height=7}
+## Scree plot showing amount of variance explained by each PC (bars) and cumulative variance as you progress along bars (line)
+screeplot(allsamps, 
+          getComponents(allsamps, 1:15), 
+          axisLabSize = 10, 
+          titleLabSize = 10, 
+          returnPlot = T, 
+          ylim = c(0,90), 
+          vline = c(findElbowPoint(allsamps$variance))) +
+  geom_label(aes(x = findElbowPoint(allsamps$variance) + 1, y = 25,
+      label = 'Elbow method', vjust = -1, size = 4))
+```
+
+```{r EigenPlots for metadata significance to principal components, fig.width=11, fig.height = 4}
+# View(tfall)
+
+# Plotting of the metadata to the PC axes to see which one has strong significant relationships with axes. 
+eigencorplot(allsamps,
+             components = getComponents(allsamps, 1:10),
+    metavars = c("reef", "Samp_trip", "Genotype", "ClusterDepth"), 
+    col = c('darkblue', 'blue2', 'black', 'red2', 'darkred'),
+    cexCorval = 0.7,
+    colCorval = 'white',
+    fontCorval = 2,
+    posLab = 'bottomleft',
+    rotLabX = 45,
+    posColKey = 'top',
+    cexLabColKey = 1.5,
+    scale = TRUE,
+    main = 'PC1 - 11, Metadata Correlations',
+    colFrame = 'white',
+    plotRsquared = FALSE)
+
+eigencorplot(allsamps,
+             components = getComponents(allsamps, 1:11),
+    metavars = c("reef", "Samp_trip", "Genotype", "ClusterDepth"), 
+    col = c('white', 'cornsilk1', 'gold', 'forestgreen', 'darkgreen'),
+    cexCorval = 1.2,
+    fontCorval = 1,
+    posLab = 'all',
+    rotLabX = 45,
+    scale = TRUE,
+    main = bquote(Principal~Component~Pearson~r^2~metadata~significant~correlation),
+    plotRsquared = T,
+    corFUN = 'pearson',
+    corUSE = 'pairwise.complete.obs',
+    corMultipleTestCorrection = 'BH',
+    signifSymbols = c('****', '***', '**', '*', ''),
+    signifCutpoints = c(0, 0.0001, 0.001, 0.01, 0.05, 1)
+    )
+```
+
+```{r PCA of the Samples, echo = F}
+## not transposing the CLR for the PCA
+pca_samp <- prcomp(t(PCA_tools_all)[,select])
+sample_loadings <- as.data.frame(pca_samp$x)
+#View(sample_loadings)
+fviz_eig(pca_samp, addlabels = TRUE, ylim = c(0, 100), )
+```
+
+```{r generation of pc objects for visualisation using ggplot2, inluce = F}
+pca12 <- plotPCA(vsdall, intgroup=c("reef", "Samp_trip", "Genotype", "ClusterDepth"), returnData = TRUE)
+pca23 <- pcaaxes23(vsdall, intgroup=c("reef", "Samp_trip", "Genotype", "ClusterDepth"), returnData = TRUE)
+pca34 <- pcaaxes34(vsdall, intgroup=c("reef", "Samp_trip", "Genotype", "ClusterDepth"), returnData = TRUE)
+pca45 <- pcaaxes45(vsdall, intgroup=c("reef", "Samp_trip", "Genotype", "ClusterDepth"), returnData = TRUE)
+pca56 <- pcaaxes56(vsdall, intgroup=c("reef", "Samp_trip", "Genotype", "ClusterDepth"), returnData = TRUE)
+```
+
+```{r quick glance reef PCAs, echo = F}
+plotPCA(vsdall, intgroup = c("reef"))
+pcaaxes23(vsdall, intgroup = c("reef"))
+pcaaxes34(vsdall, intgroup = c("reef"))
+pcaaxes45(vsdall, intgroup = c("reef"))
+pcaaxes56(vsdall, intgroup = c("reef"))
+```
+
+```{r quick glance cluster depth PCAs, echo = F}
+plotPCA(vsdall, intgroup = c("ClusterDepth"))
+pcaaxes23(vsdall, intgroup = c("ClusterDepth"))
+pcaaxes34(vsdall, intgroup = c("ClusterDepth"))
+pcaaxes45(vsdall, intgroup = c("ClusterDepth"))
+pcaaxes56(vsdall, intgroup = c("ClusterDepth"))
+```
+
+```{r quick glance genet PCAs, echo = F}
+plotPCA(vsdall, intgroup = c("Genotype"))
+pcaaxes23(vsdall, intgroup = c("Genotype"))
+pcaaxes34(vsdall, intgroup = c("Genotype"))
+pcaaxes45(vsdall, intgroup = c("Genotype"))
+pcaaxes56(vsdall, intgroup = c("Genotype"))
+```
+
+```{r quick glance sampling trip PCAs, echo = F}
+plotPCA(vsdall, intgroup = c("Samp_trip"))
+pcaaxes23(vsdall, intgroup = c("Samp_trip"))
+pcaaxes34(vsdall, intgroup = c("Samp_trip"))
+pcaaxes45(vsdall, intgroup = c("Samp_trip"))
+pcaaxes56(vsdall, intgroup = c("Samp_trip"))
+```
+
+
+##3.C Hirachical Clustering with Genet Removed
+###3.C.1 Hierachical Clustering  
+  
+```{r VST with limma removing genet variance, include = F}
+ddsall <- DESeqDataSetFromMatrix(countData = cccall, 
+                                 colData = tfall, 
+                                 design = ~ reef + Samp_trip)
+
+vsdgeno <- vst(ddsall)
+assay(vsdgeno) <- limma::removeBatchEffect(assay(vsdgeno),
+                                           batch = vsdgeno$Genotype)
+```
+
+```{r Genes for WGCNA and checking they all a-okay, echo = F}
+genes4wgcna <- assay(vsdgeno)
+genes4wgcna <- t(genes4wgcna)
+genes4wgcna <- as.data.frame(genes4wgcna)
+nrow(genes4wgcna)
+dim(genes4wgcna)
+
+gsg = goodSamplesGenes(genes4wgcna, verbose = 3)
+gsg$allOK
+```
+
+```{r checking for outliers, fig.width=10, fig.height=10}
+sampleTree = hclust(dist(genes4wgcna), method = "ward.D2")
+
+sizeGrWindow(12,9)
+par(cex = 0.5);
+par(mar = c(0,4,2,0))
+plot(
+  sampleTree,
+  main = "Sample clustering to detect outliers",
+  sub = "",
+  xlab = "",
+  cex.lab = 0.5,
+  cex.axis = 0.5,
+  cex.main = 0.5
+)
+abline(h = 400, col = "red")
+```
+  
+```{r}
+hclust(dist(genes4wgcna), method = "ward.D2") %>% 
+  as.dendrogram() -> sampleTree_gg
+
+dendrogram_data <- dendro_data(sampleTree_gg)
+dendrogram_segments <- dendrogram_data$segments
+
+dendrogram_segments %>%
+ filter(yend == 0) %>%
+ left_join(dendrogram_data$labels, by = "x") %>% 
+ rename(sample_name = label) %>%
+ left_join(tfall %>% 
+             rownames_to_column(var = "sample_name"), 
+           by = "sample_name") -> dendrogram_ends
+
+ggplot() +
+  geom_segment(data = dendrogram_segments,
+               aes(
+                 x = x,
+                 y = y,
+                 xend = xend,
+                 yend = yend
+               )) +
+  geom_segment(data = dendrogram_ends,
+               aes(
+                 x = x,
+                 y = y.x,
+                 xend = xend,
+                 yend = yend,
+                 color = Samp_trip
+               )) +
+  theme_bw()
+
+ggplot() +
+  geom_segment(data = dendrogram_segments,
+               aes(
+                 x = x,
+                 y = y,
+                 xend = xend,
+                 yend = yend
+               )) +
+  geom_segment(data = dendrogram_ends,
+               aes(
+                 x = x,
+                 y = y.x,
+                 xend = xend,
+                 yend = yend,
+                 color = reef
+               )) +
+  theme_bw() + 
+  scale_color_manual(values = c("tan1", "firebrick3", "deepskyblue"), 
+                     name = "Reef Sites")
+
+ggplot() +
+  geom_segment(data = dendrogram_segments,
+               aes(
+                 x = x,
+                 y = y,
+                 xend = xend,
+                 yend = yend
+               )) +
+  geom_segment(data = dendrogram_ends,
+               aes(
+                 x = x,
+                 y = y.x,
+                 xend = xend,
+                 yend = yend,
+                 color = Genotype
+               )) +
+  theme_bw() + 
+  scale_color_manual(name = "Genotype",
+                     values = c("wheat3", "navy" , "springgreen3", "grey60"))
+```
+
+So there is something driving the variance in these samples that is not present in the metadata.  
+  
+Plan  
+- Use cut height to get the clusters  
+- Plot the hierachical and see what it does  
+- Look at PCA as well to see  
+
+```{r making clusters based on tree cut height, fig.height=20, fig.width=20, include = F}
+clust = cutreeStatic(sampleTree, cutHeight = 400, minSize = 10)
+table(clust)
+```
+
+```{r making dataframes with clusters present from hc, include = F}
+genes4wgcna %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "BN_salmon") %>%
+  cbind(clust) %>%
+  dplyr::select(BN_salmon, clust) %>%
+  inner_join(tfall %>%
+               rownames_to_column(var = "BN_salmon")) %>%
+  column_to_rownames(var = "BN_salmon") -> tfall
+```
+
+```{r VST with limma removing genet variance, include = F}
+ddsall <- DESeqDataSetFromMatrix(countData = cccall, 
+                                 colData = tfall, 
+                                 design = ~ reef + Samp_trip)
+
+vsdgeno <- vst(ddsall)
+assay(vsdgeno) <- limma::removeBatchEffect(assay(vsdgeno),
+                                           batch = vsdgeno$Genotype)
+```
+
+```{r Genes for WGCNA and checking they all a-okay, echo = F}
+genes4wgcna <- assay(vsdgeno)
+genes4wgcna <- t(genes4wgcna)
+genes4wgcna <- as.data.frame(genes4wgcna)
+nrow(genes4wgcna)
+dim(genes4wgcna)
+
+gsg = goodSamplesGenes(genes4wgcna, verbose = 3)
+gsg$allOK
+```
+
+```{r plotting hc with included identified clusters to make sure everything aligns, echo = F}
+hclust(dist(genes4wgcna), method = "ward.D2") %>% 
+  as.dendrogram() -> sampleTree_gg
+
+dendrogram_data <- dendro_data(sampleTree_gg)
+dendrogram_segments <- dendrogram_data$segments
+dendrogram_ends %>% 
+  mutate(clust = as.factor(clust))
+
+dendrogram_segments %>%
+ filter(yend == 0) %>%
+ left_join(dendrogram_data$labels, by = "x") %>% 
+ rename(sample_name = label) %>%
+ left_join(tfall %>% 
+             rownames_to_column(var = "sample_name"), 
+           by = "sample_name") -> dendrogram_ends
+ggplot() +
+  geom_segment(data = dendrogram_segments,
+               aes(
+                 x = x,
+                 y = y,
+                 xend = xend,
+                 yend = yend
+               )) +
+  geom_segment(data = dendrogram_ends %>% 
+                 mutate(clust = as.factor(clust)),
+               aes(
+                 x = x,
+                 y = y.x,
+                 xend = xend,
+                 yend = yend,
+                 color = clust
+               )) +
+  theme_bw() + 
+  scale_color_manual(values = c("dodgerblue3", "grey20"))
+```
+
+
+###3.C.2 - PCA Analysis with Clusters Identified
+
+```{r variance stabilised transformation, include=FALSE}
+vsdall <- vst(ddsall, blind=FALSE)
+```
+
+```{r Formating VST for PCAtools, include = F}
+PCA_tools_all <- assay(vsdall)
+
+rv <- rowVars(PCA_tools_all)
+select <- order(rv, 
+                decreasing = TRUE)[seq_len(min(500, 
+                                               length(rv)))]
+
+allsamps <- pca(PCA_tools_all[select,], 
+                metadata = tfall, 
+                removeVar = 0.10)
+```
+
+```{r Plots from PCAtools, fig.width=13, fig.height=7}
+## Scree plot showing amount of variance explained by each PC (bars) and cumulative variance as you progress along bars (line)
+screeplot(allsamps, 
+          getComponents(allsamps, 1:15), 
+          axisLabSize = 10, 
+          titleLabSize = 10, 
+          returnPlot = T, 
+          ylim = c(0,90), 
+          vline = c(findElbowPoint(allsamps$variance))) +
+  geom_label(aes(x = findElbowPoint(allsamps$variance) + 1, y = 25,
+      label = 'Elbow method', vjust = -1, size = 4))
+```
+
+```{r EigenPlots for metadata significance to principal components, fig.width=11, fig.height = 4}
+# Plotting of the metadata to the PC axes to see which one has strong significant relationships with axes. 
+eigencorplot(allsamps,
+             components = getComponents(allsamps, 1:10),
+    metavars = c("reef", "Samp_trip", "Genotype", "ClusterDepth", "clust"), 
+    col = c('darkblue', 'blue2', 'black', 'red2', 'darkred'),
+    cexCorval = 0.7,
+    colCorval = 'white',
+    fontCorval = 1,
+    posLab = 'bottomleft',
+    rotLabX = 45,
+    posColKey = 'top',
+    cexLabColKey = 1,
+    scale = TRUE,
+    main = 'PC1 - 11, Metadata Correlations',
+    colFrame = 'white',
+    plotRsquared = FALSE)
+
+eigencorplot(allsamps,
+             components = getComponents(allsamps, 1:11),
+    metavars = c("reef", "Samp_trip", "Genotype", "ClusterDepth", "clust"), 
+    col = c('white', 'cornsilk1', 'gold', 'forestgreen', 'darkgreen'),
+    cexCorval = 1.2,
+    fontCorval = 1,
+    posLab = 'all',
+    rotLabX = 45,
+    scale = TRUE,
+    main = bquote(Principal~Component~Pearson~r^2~metadata~significant~correlation),
+    plotRsquared = T,
+    corFUN = 'pearson',
+    corUSE = 'pairwise.complete.obs',
+    corMultipleTestCorrection = 'BH',
+    signifSymbols = c('****', '***', '**', '*', ''),
+    signifCutpoints = c(0, 0.0001, 0.001, 0.01, 0.05, 1)
+    )
+```
+
+```{r generation of pc objects for visualisation using ggplot2, inluce = F}
+pca12 <- plotPCA(vsdall, intgroup=c("reef", "Samp_trip", "Genotype", "ClusterDepth", "clust"), returnData = TRUE)
+pca23 <- pcaaxes23(vsdall, intgroup=c("reef", "Samp_trip", "Genotype", "ClusterDepth"), returnData = TRUE)
+pca34 <- pcaaxes34(vsdall, intgroup=c("reef", "Samp_trip", "Genotype", "ClusterDepth"), returnData = TRUE)
+pca45 <- pcaaxes45(vsdall, intgroup=c("reef", "Samp_trip", "Genotype", "ClusterDepth"), returnData = TRUE)
+pca56 <- pcaaxes56(vsdall, intgroup=c("reef", "Samp_trip", "Genotype", "ClusterDepth"), returnData = TRUE)
+```
+
+```{r quick glance reef PCAs, echo = F}
+plotPCA(vsdall, intgroup = c("clust"))
+plotPCA(vsdall, intgroup = c("Genotype"))
+plotPCA(vsdall, intgroup = c("ClusterDepth"))
+pcaaxes23(vsdall, intgroup = c("Genotype"))
+pcaaxes45(vsdall, intgroup = c("reef"))
+pcaaxes56(vsdall, intgroup = c("reef"))
+```
+
+
+###3.C.3 - PCA with clust removed  
+
+```{r VST with limma removing genet variance, include = F}
+vsdgeno <- vst(ddsall)
+assay(vsdgeno) <- limma::removeBatchEffect(assay(vsdgeno), 
+                                           vsdgeno$clust)
+```
+
+```{r Formating VST with genet removed for PCAtools, include = F}
+PCA_tools_all <- assay(vsdgeno)
+
+rv <- rowVars(PCA_tools_all)
+select <- order(rv, 
+                decreasing = TRUE)[seq_len(min(500, 
+                                               length(rv)))]
+
+allsamps <- pca(PCA_tools_all[select,], 
+                metadata = tfall, 
+                removeVar = 0.10)
+```
+
+```{r Plots from PCAtools, fig.width=7, fig.height=3, echo = F}
+## Scree plot showing amount of variance explained by each PC (bars) and cumulative variance as you progress along bars (line)
+screeplot(allsamps, 
+          getComponents(allsamps, 1:15), 
+          axisLabSize = 10, 
+          titleLabSize = 10, 
+          returnPlot = T, 
+          ylim = c(0,90), 
+          vline = c(findElbowPoint(allsamps$variance))) +
+  geom_label(aes(x = findElbowPoint(allsamps$variance) + 1, y = 25,
+      label = 'Elbow method', vjust = -1, size = 4))
+```
+
+```{r EigenPlots, fig.width= 10, fig.height = 5, echo = F}
+# Plotting of the metadata to the PC axes to see which one has strong significant relationships with axes. 
+eigencorplot(allsamps,
+             components = getComponents(allsamps, 1:10),
+    metavars = c("reef", "Samp_trip", "Genotype", "ClusterDepth"), 
+    col = c('darkblue', 'blue2', 'black', 'red2', 'darkred'),
+    cexCorval = 0.7,
+    colCorval = 'white',
+    fontCorval = 2,
+    posLab = 'bottomleft',
+    rotLabX = 45,
+    posColKey = 'top',
+    cexLabColKey = 1.5,
+    scale = TRUE,
+    main = 'PC1 - 11, Metadata Correlations',
+    colFrame = 'white',
+    plotRsquared = FALSE)
+
+eigencorplot(allsamps,
+             components = getComponents(allsamps, 1:11),
+    metavars = c("reef", "Samp_trip", "Genotype", "ClusterDepth"), 
+    col = c('white', 'cornsilk1', 'gold', 'forestgreen', 'darkgreen'),
+    cexCorval = 1,
+    fontCorval = 1,
+    posLab = 'all',
+    rotLabX = 45,
+    scale = TRUE,
+    main = bquote(Principal~Component~Pearson~r^2~metadata~significant~correlation),
+    plotRsquared = T,
+    corFUN = 'pearson',
+    corUSE = 'pairwise.complete.obs',
+    corMultipleTestCorrection = 'BH',
+    signifSymbols = c('****', '***', '**', '*', ''),
+    signifCutpoints = c(0, 0.0001, 0.001, 0.01, 0.05, 1)
+    )
+```
+
+```{r pca objects for ggplotting with genet variance removed, include = F}
+pca12 <- plotPCA(vsdgeno, intgroup=c("reef", "Samp_trip", "Genotype", "ClusterDepth"), returnData = TRUE)
+pca23 <- pcaaxes23(vsdgeno, intgroup=c("reef", "Samp_trip", "Genotype", "ClusterDepth"), returnData = TRUE)
+pca34 <- pcaaxes34(vsdgeno, intgroup=c("reef", "Samp_trip", "Genotype", "ClusterDepth"), returnData = TRUE)
+pca45 <- pcaaxes45(vsdgeno, intgroup=c("reef", "Samp_trip", "Genotype", "ClusterDepth"), returnData = TRUE)
+pca56 <- pcaaxes56(vsdgeno, intgroup=c("reef", "Samp_trip", "Genotype", "ClusterDepth"), returnData = TRUE)
+```
+
+```{r quick glance reef PCAs with genet variance removed, echo = F}
+plotPCA(vsdgeno, intgroup = c("Genotype"))
+pcaaxes23(vsdgeno, intgroup = c("Genotype"))
+pcaaxes34(vsdgeno, intgroup = c("Genotype"))
+pcaaxes45(vsdgeno, intgroup = c("Genotype"))
+pcaaxes56(vsdgeno, intgroup = c("Genotype"))
+```
+
+```{r quick glance reef PCAs with genet variance removed, echo = F}
+plotPCA(vsdgeno, intgroup = c("ClusterDepth"))
+pcaaxes23(vsdgeno, intgroup = c("ClusterDepth"))
+pcaaxes34(vsdgeno, intgroup = c("ClusterDepth"))
+pcaaxes45(vsdgeno, intgroup = c("ClusterDepth"))
+pcaaxes56(vsdgeno, intgroup = c("ClusterDepth"))
+```
+
+```{r making data frame with pc1 to 3 for convex hull, include = F}
+# pca12 %>% 
+#   rownames_to_column(var = "BN_salmon") %>%
+#   inner_join(pca23 %>% 
+#                rownames_to_column(var = "BN_salmon") %>% 
+#                dplyr::select(BN_salmon, PC3)) %>% 
+#   column_to_rownames(var = "BN_salmon") -> pca123
+```
+
+```{r attempt at 3d convex hull plot for pc1 to 3, include = F}
+# plot_ly(pca123, 
+#         x = ~PC2, 
+#         y = ~PC1, 
+#         z = ~PC3, 
+#         color = ~Genotype, 
+#         colors = c("wheat3", "navy", "springgreen3", "grey60"))
+```
+
+```{r ggplot pcs of genet with batch removed, echo = F}
+ggplot(pca12, aes(PC1, PC2, color = Genotype)) +
+  geom_point(size = 2) +
+  xlab(paste0("PC1 16% variance")) +
+  ylab(paste0("PC2 14% variance")) +
+  theme(
+    text = element_text(size = 11, family = "Arial"),
+    legend.position = "right",
+    panel.background = element_rect(fill = "transparent"),
+    axis.line = element_line(colour = "black"),
+    legend.key = element_rect(fill = "transparent"),
+    axis.text = element_text(size = 8)
+  )  +
+  theme(legend.key.size = unit(0.7, "cm")) +
+  stat_ellipse(
+    geom = "polygon",
+    aes(PC1,
+        PC2,
+        color = Genotype,
+        fill = Genotype),
+    type = "norm",
+    alpha = 0.10
+  ) +
+  scale_color_manual(name = "Genotype",
+                     values = c("wheat3", "navy" , "springgreen3", "grey60")) +
+  scale_fill_manual(name = "Genotype",
+                    values = c("wheat3", "navy" , "springgreen3", "grey60"))
+
+ggplot(pca23, aes(PC2, PC3, color = Genotype)) +
+  geom_point(size = 2) +
+  xlab(paste0("PC2 14% variance")) +
+  ylab(paste0("PC3 12% variance")) +
+  theme(
+    text = element_text(size = 11, family = "Arial"),
+    legend.position = "right",
+    panel.background = element_rect(fill = "transparent"),
+    axis.line = element_line(colour = "black"),
+    legend.key = element_rect(fill = "transparent"),
+    axis.text = element_text(size = 8)
+  )  +
+  theme(legend.key.size = unit(0.7, "cm")) +
+  stat_ellipse(
+    geom = "polygon",
+    aes(PC2,
+        PC3,
+        color = Genotype,
+        fill = Genotype),
+    type = "norm",
+    alpha = 0.10
+  ) +
+  scale_color_manual(name = "Genotype",
+                     values = c("wheat3", "navy" , "springgreen3", "grey60")) +
+  scale_fill_manual(name = "Genotype",
+                    values = c("wheat3", "navy" , "springgreen3", "grey60"))
+
+ggplot(pca34, aes(PC3, PC4, color = Genotype)) +
+  geom_point(size = 2) +
+  xlab(paste0("PC3 12% variance")) +
+  ylab(paste0("PC4 10% variance")) +
+  theme(
+    text = element_text(size = 11, family = "Arial"),
+    legend.position = "right",
+    panel.background = element_rect(fill = "transparent"),
+    axis.line = element_line(colour = "black"),
+    legend.key = element_rect(fill = "transparent"),
+    axis.text = element_text(size = 8)
+  )  +
+  theme(legend.key.size = unit(0.7, "cm")) +
+  stat_ellipse(
+    geom = "polygon",
+    aes(PC3,
+        PC4,
+        color = Genotype,
+        fill = Genotype),
+    type = "norm",
+    alpha = 0.10
+  ) +
+  scale_color_manual(name = "Genotype",
+                     values = c("wheat3", "navy" , "springgreen3", "grey60")) +
+  scale_fill_manual(name = "Genotype",
+                    values = c("wheat3", "navy" , "springgreen3", "grey60"))
+```
+
+```{r quick glance reef PCAs with genet variance removed, echo = F}
+plotPCA(vsdgeno, intgroup = c("Samp_trip"))
+pcaaxes23(vsdgeno, intgroup = c("Samp_trip"))
+pcaaxes34(vsdgeno, intgroup = c("Samp_trip"))
+pcaaxes45(vsdgeno, intgroup = c("Samp_trip"))
+pcaaxes56(vsdgeno, intgroup = c("Samp_trip"))
+```
+
+```{r ggplot pcs of sampling timepoint with batch removed, echo = F}
+ggplot(pca12, aes(PC1, PC2, color = Samp_trip)) +
+  geom_point(size = 2) +
+  xlab(paste0("PC1 16% variance")) +
+  ylab(paste0("PC2 14% variance")) +
+  theme(
+    text = element_text(size = 11, family = "Arial"),
+    legend.position = "right",
+    panel.background = element_rect(fill = "transparent"),
+    axis.line = element_line(colour = "black"),
+    legend.key = element_rect(fill = "transparent"),
+    axis.text = element_text(size = 8)
+  )  +
+  theme(legend.key.size = unit(0.7, "cm")) +
+  stat_ellipse() + 
+  scale_color_manual(
+    values = c("indianred1", "palegreen3", "turquoise3", "purple2"),
+    name = "Sampling Timepoint",
+    labels = c("ST2", "ST3", "ST4", "ST5"))
+
+ggplot(pca23, aes(PC2, PC3, color = Samp_trip)) +
+  geom_point(size = 2) +
+  xlab(paste0("PC2 14% variance")) +
+  ylab(paste0("PC3 12% variance")) +
+  theme(
+    text = element_text(size = 11, family = "Arial"),
+    legend.position = "right",
+    panel.background = element_rect(fill = "transparent"),
+    axis.line = element_line(colour = "black"),
+    legend.key = element_rect(fill = "transparent"),
+    axis.text = element_text(size = 8)
+  )  +
+  theme(legend.key.size = unit(0.7, "cm")) +
+  stat_ellipse() + 
+  scale_color_manual(
+    values = c("indianred1", "palegreen3", "turquoise3", "purple2"),
+    name = "Sampling Timepoint",
+    labels = c("ST2", "ST3", "ST4", "ST5"))
+
+ggplot(pca34, aes(PC3, PC4, color = Samp_trip)) +
+  geom_point(size = 2) +
+  xlab(paste0("PC3 12% variance")) +
+  ylab(paste0("PC4 10% variance")) +
+  theme(
+    text = element_text(size = 11, family = "Arial"),
+    legend.position = "right",
+    panel.background = element_rect(fill = "transparent"),
+    axis.line = element_line(colour = "black"),
+    legend.key = element_rect(fill = "transparent"),
+    axis.text = element_text(size = 8)
+  )  +
+  theme(legend.key.size = unit(0.7, "cm")) +
+  stat_ellipse() + 
+  scale_color_manual(
+    values = c("indianred1", "palegreen3", "turquoise3", "purple2"),
+    name = "Sampling Timepoint",
+    labels = c("ST2", "ST3", "ST4", "ST5"))
+
+ggplot(pca45, aes(PC4, PC5, color = Samp_trip)) +
+  geom_point(size = 2) +
+  xlab(paste0("PC4 10% variance")) +
+  ylab(paste0("PC5 4% variance")) +
+  theme(
+    text = element_text(size = 11, family = "Arial"),
+    legend.position = "right",
+    panel.background = element_rect(fill = "transparent"),
+    axis.line = element_line(colour = "black"),
+    legend.key = element_rect(fill = "transparent"),
+    axis.text = element_text(size = 8)
+  )  +
+  theme(legend.key.size = unit(0.7, "cm")) +
+  stat_ellipse() + 
+  scale_color_manual(
+    values = c("indianred1", "palegreen3", "turquoise3", "purple2"),
+    name = "Sampling Timepoint",
+    labels = c("ST2", "ST3", "ST4", "ST5"))
+```
+
+```{r quick glance reef PCAs with genet variance removed, echo = F}
+plotPCA(vsdgeno, intgroup = c("reef"))
+pcaaxes23(vsdgeno, intgroup = c("reef"))
+pcaaxes34(vsdgeno, intgroup = c("reef"))
+pcaaxes45(vsdgeno, intgroup = c("reef"))
+pcaaxes56(vsdgeno, intgroup = c("reef"))
+```
+
+```{r ggplot pcs of sampling timepoint with batch removed, echo = F}
+ggplot(pca12, aes(PC1, PC2, color = reef)) +
+  geom_point(size = 2) +
+  xlab(paste0("PC1 16% variance")) +
+  ylab(paste0("PC2 14% variance")) +
+  theme(
+    text = element_text(size = 11, family = "Arial"),
+    legend.position = "right",
+    panel.background = element_rect(fill = "transparent"),
+    axis.line = element_line(colour = "black"),
+    legend.key = element_rect(fill = "transparent"),
+    axis.text = element_text(size = 8)
+  )  +
+  theme(legend.key.size = unit(0.7, "cm")) +
+  stat_ellipse() + 
+  scale_color_manual(values = c("black", "grey50", "lightblue3"), 
+                     name = "Reef Site", 
+                     labels = c("Carysfort Reef", "North Dry Rocks", "Pickles Reef"))
+
+ggplot(pca23, aes(PC2, PC3, color = reef)) +
+  geom_point(size = 2) +
+  xlab(paste0("PC2 14% variance")) +
+  ylab(paste0("PC3 12% variance")) +
+  theme(
+    text = element_text(size = 11, family = "Arial"),
+    legend.position = "right",
+    panel.background = element_rect(fill = "transparent"),
+    axis.line = element_line(colour = "black"),
+    legend.key = element_rect(fill = "transparent"),
+    axis.text = element_text(size = 8)
+  )  +
+  theme(legend.key.size = unit(0.7, "cm")) +
+  stat_ellipse() + 
+  scale_color_manual(values = c("black", "grey50", "lightblue3"), 
+                     name = "Reef Site", 
+                     labels = c("Carysfort Reef", "North Dry Rocks", "Pickles Reef"))
+
+ggplot(pca34, aes(PC3, PC4, color = reef)) +
+  geom_point(size = 2) +
+  xlab(paste0("PC3 12% variance")) +
+  ylab(paste0("PC4 10% variance")) +
+  theme(
+    text = element_text(size = 11, family = "Arial"),
+    legend.position = "right",
+    panel.background = element_rect(fill = "transparent"),
+    axis.line = element_line(colour = "black"),
+    legend.key = element_rect(fill = "transparent"),
+    axis.text = element_text(size = 8)
+  )  +
+  theme(legend.key.size = unit(0.7, "cm")) +
+  stat_ellipse() + 
+  scale_color_manual(values = c("black", "grey50", "lightblue3"), 
+                     name = "Reef Site", 
+                     labels = c("Carysfort Reef", "North Dry Rocks", "Pickles Reef"))
+
+ggplot(pca45, aes(PC4, PC5, color = reef)) +
+  geom_point(size = 2) +
+  xlab(paste0("PC4 10% variance")) +
+  ylab(paste0("PC5 4% variance")) +
+  theme(
+    text = element_text(size = 11, family = "Arial"),
+    legend.position = "right",
+    panel.background = element_rect(fill = "transparent"),
+    axis.line = element_line(colour = "black"),
+    legend.key = element_rect(fill = "transparent"),
+    axis.text = element_text(size = 8)
+  )  +
+  theme(legend.key.size = unit(0.7, "cm")) +
+  stat_ellipse() + 
+  scale_color_manual(values = c("black", "grey50", "lightblue3"), 
+                     name = "Reef Site", 
+                     labels = c("Carysfort Reef", "North Dry Rocks", "Pickles Reef"))
+```
+
+###3.C.4 - PCA with Genet and Clust removed
+
+```{r VST with limma removing genet variance, include = F}
+vsdgeno <- vst(ddsall)
+assay(vsdgeno) <-
+  limma::removeBatchEffect(assay(vsdgeno), 
+                           batch = clust,
+                           batch2 = vsdgeno$Genotype)
+```
+
+```{r Formating VST with genet removed for PCAtools, include = F}
+PCA_tools_all <- assay(vsdgeno)
+
+rv <- rowVars(PCA_tools_all)
+select <- order(rv, 
+                decreasing = TRUE)[seq_len(min(500, 
+                                               length(rv)))]
+
+allsamps <- pca(PCA_tools_all[select,], 
+                metadata = tfall, 
+                removeVar = 0.10)
+```
+
+```{r Plots from PCAtools, fig.width=7, fig.height=3, echo = F}
+## Scree plot showing amount of variance explained by each PC (bars) and cumulative variance as you progress along bars (line)
+screeplot(allsamps, 
+          getComponents(allsamps, 1:15), 
+          axisLabSize = 10, 
+          titleLabSize = 10, 
+          returnPlot = T, 
+          ylim = c(0,90), 
+          vline = c(findElbowPoint(allsamps$variance))) +
+  geom_label(aes(x = findElbowPoint(allsamps$variance) + 1, y = 25,
+      label = 'Elbow method', vjust = -1, size = 4))
+```
+
+```{r EigenPlots, fig.width= 10, fig.height = 5, echo = F}
+# Plotting of the metadata to the PC axes to see which one has strong significant relationships with axes. 
+eigencorplot(allsamps,
+             components = getComponents(allsamps, 1:10),
+    metavars = c("reef", "Samp_trip", "Genotype", "ClusterDepth", "clust"), 
+    col = c('darkblue', 'blue2', 'black', 'red2', 'darkred'),
+    cexCorval = 0.7,
+    colCorval = 'white',
+    fontCorval = 2,
+    posLab = 'bottomleft',
+    rotLabX = 45,
+    posColKey = 'top',
+    cexLabColKey = 1.5,
+    scale = TRUE,
+    main = 'PC1 - 11, Metadata Correlations',
+    colFrame = 'white',
+    plotRsquared = FALSE)
+
+eigencorplot(allsamps,
+             components = getComponents(allsamps, 1:11),
+    metavars = c("reef", "Samp_trip", "Genotype", "ClusterDepth", "clust"), 
+    col = c('white', 'cornsilk1', 'gold', 'forestgreen', 'darkgreen'),
+    cexCorval = 1,
+    fontCorval = 1,
+    posLab = 'all',
+    rotLabX = 45,
+    scale = TRUE,
+    main = bquote(Principal~Component~Pearson~r^2~metadata~significant~correlation),
+    plotRsquared = T,
+    corFUN = 'pearson',
+    corUSE = 'pairwise.complete.obs',
+    corMultipleTestCorrection = 'BH',
+    signifSymbols = c('****', '***', '**', '*', ''),
+    signifCutpoints = c(0, 0.0001, 0.001, 0.01, 0.05, 1)
+    )
+```
+
+```{r pca objects for ggplotting with genet variance removed, include = F}
+pca12 <- plotPCA(vsdgeno, intgroup=c("reef", "Samp_trip", "Genotype", "ClusterDepth"), returnData = TRUE)
+pca23 <- pcaaxes23(vsdgeno, intgroup=c("reef", "Samp_trip", "Genotype", "ClusterDepth"), returnData = TRUE)
+pca34 <- pcaaxes34(vsdgeno, intgroup=c("reef", "Samp_trip", "Genotype", "ClusterDepth"), returnData = TRUE)
+pca45 <- pcaaxes45(vsdgeno, intgroup=c("reef", "Samp_trip", "Genotype", "ClusterDepth"), returnData = TRUE)
+pca56 <- pcaaxes56(vsdgeno, intgroup=c("reef", "Samp_trip", "Genotype", "ClusterDepth"), returnData = TRUE)
+```
+
+```{r quick glance reef PCAs with genet variance removed, echo = F}
+plotPCA(vsdgeno, intgroup = c("Samp_trip"))
+pcaaxes23(vsdgeno, intgroup = c("Samp_trip"))
+pcaaxes34(vsdgeno, intgroup = c("Samp_trip"))
+pcaaxes45(vsdgeno, intgroup = c("reef"))
+pcaaxes56(vsdgeno, intgroup = c("reef"))
+```
+
+```{r quick glance reef PCAs with genet variance removed, echo = F}
+plotPCA(vsdgeno, intgroup = c("ClusterDepth"))
+pcaaxes23(vsdgeno, intgroup = c("ClusterDepth"))
+pcaaxes34(vsdgeno, intgroup = c("ClusterDepth"))
+pcaaxes45(vsdgeno, intgroup = c("ClusterDepth"))
+pcaaxes56(vsdgeno, intgroup = c("ClusterDepth"))
+```
+
+```{r quick glance reef PCAs with genet variance removed, echo = F}
+plotPCA(vsdgeno, intgroup = c("reef"))
+pcaaxes23(vsdgeno, intgroup = c("reef"))
+pcaaxes34(vsdgeno, intgroup = c("reef"))
+pcaaxes45(vsdgeno, intgroup = c("reef"))
+pcaaxes56(vsdgeno, intgroup = c("reef"))
+```
+
+
+##3.D - PC1 Clust Analysis
+####3.D.1 - Genes Driving the Batch Variable 
+
+```{r Genes driving difference between PC1 and PC2} 
+## getting the laodings for the PC's from PCA plots
+rv <- rowVars(assay(vsdall))
+#View(rowvars)
+ntop = 1000
+select <- order(rv, decreasing = TRUE)[seq_len(min(ntop, 
+        length(rv)))]
+#View(select)
+intgroup=c("clust", "Genotype")
+ntop = 1000
+rv <- rowVars(assay(vsdall))
+    select <- order(rv, decreasing = TRUE)[seq_len(min(ntop,
+        length(rv)))]
+    pca <- prcomp(t(assay(vsdall)[select, ]))
+    percentVar <- pca$sdev^2/sum(pca$sdev^2)
+    if (!all(intgroup %in% names(colData(vsdall)))) {
+        stop("the argument 'intgroup' should specify columns of colData(dds)")
+    }
+    
+rotations <- pca$rotation
+pc1_rotations <- rotations[,c(1)]
+pc1_rotations <- as.data.frame(pc1_rotations)
+str(pc1_rotations)
+
+#interquartile range and selecting any genes outside of it to explain pc1 high variance explanation
+quantile(pc1_rotations$pc1_rotations, 0.90)
+quantile(pc1_rotations$pc1_rotations, 0.10)
+quantile(pc1_rotations$pc1_rotations, 0.50)
+median(pc1_rotations$pc1_rotations)
+##quantiles for most variable genes
+wanted_values <- subset(pc1_rotations, pc1_rotations >0.04801352   | pc1_rotations < -0.01800379)
+nrow(pc1_rotations)
+nrow(wanted_values)
+rownamespc1_variance <- row.names(wanted_values)
+```
+
+```{r Annotated PC1 genes, include = F}
+wanted_values %>% 
+  as.data.frame() %>% 
+  rownames_to_column(var = "Count_ID") %>% 
+  inner_join(annot_filtered_2_15 %>% 
+               dplyr::select(Count_ID, Gene.Annotation, 2:8, 19, 13:18)) -> PC1_annotate
+# View(PC1_annotate)
+# write.csv(PC1_annotate,
+#          file = "/Users/benjamin.d.young/Dropbox/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/r_generated_files/PC1_annotated.csv",
+#          row.names = F)
+```
+
+```{r KEGG enrichment test for PC1 genes}
+PC1_enrichkegg <-
+  enrichKEGG(
+    gene = PC1_annotate$KEGG.ID..threshold.30,
+    organism = 'ko',
+    pvalueCutoff = 0.01
+  )
+```
+
+```{r gene to kegg enriched terms, include = F}
+as.data.frame(PC1_enrichkegg) %>%
+  separate_rows(geneID, sep = '\\/', convert = T) %>%
+  dplyr::rename(., pvalue_KEGG = pvalue) %>% 
+  inner_join(annot_filtered_2_15,
+             by = c("geneID" = "KEGG.ID..threshold.30")) -> PC1_enrichkegg_genes
+# View(PC1_enrichkegg_genes)
+```
+
+```{r barplot of PC1 enriched genes}
+barplot(PC1_enrichkegg, showCategory = 100)
+```
+
+
+### 3.D.2 - DeSeq Analysis PC1 Clust Genes
+
+```{r PC1 deseq analysis, echo = F}
+# ddslrt <- DESeqDataSetFromMatrix(
+#   countData = cccall,
+#   colData = tfall,
+#   design = ~ Genotype + clust
+# )
+# 
+# dds_pc1 <- DESeq(ddslrt,
+#                  test = "Wald")
+# 
+# pc1_res <- results(dds_pc1,
+#                    alpha = 0.001)
+# summary(pc1_res)
+```
+
+
+##3.E - Genet In-Depth Analysis
+###3.E.1 - Genet LRT Analysis
+
+To keep constant with Young et al (2022) the genet colours are as follows
+CN2 - wheat3
+CN4 - navy
+HS1 - springgreen3
+ML2 - grey60
+
+```{r LRT analysis for genet, echo = F}
+ddslrt <- DESeqDataSetFromMatrix(countData = cccall, 
+                                 colData = tfall, 
+                                 design = ~ clust + Genotype)
+
+ddslrt <- DESeq(ddslrt, 
+                test="LRT", 
+                reduced = ~ clust)
+lrt_results <- results(ddslrt, 
+                       alpha = 0.001)
+
+summary(lrt_results)
+```
+
+```{r filtering genet lrt results to padj 0.001, echo = F}
+as.data.frame(lrt_results) %>%
+  na.exclude() %>%
+  dplyr::filter(padj <= 0.001) %>% 
+  rownames_to_column(var = "Count_ID") %>% 
+  inner_join(annot_4_analysis %>% 
+               dplyr::select(Count_ID, Gene.Annotation, 6:21)) -> LRT_geno_0.001
+nrow(LRT_geno_0.001)
+# View(LRT_geno_0.001)
+
+# write.csv(LRT_geno_0.001,
+#           file = "/Users/benjamin.d.young/Dropbox/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/r_generated_files/LRT_geno_0.001_results.csv")
+```
+
+
+###3.E.2 - Genet GO Enrichment Analysis
+
+Run genes generated in last section in Cytoscape and BINGO, then run the rest of the analysis below. 
+*N.B.* Have to manually go in and select how many lines to skip in the bgo results file. There will be a more elegant way to do this in r and read.table but I am le lazy right now. 
+
+```{r reading in bingo results for the genet lrt at 0.01, echo = F}
+read.table(
+  file = "/Users/benyoung/Dropbox/research/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/files_for_analysis/bingo_results/genet_lrt_0.001_clust_var_removed.bgo",
+  skip = 55,
+  stringsAsFactors = F,
+  sep = "\t",
+  header = T
+) %>%
+  mutate(GO.ID_FULL = pad27(GO.ID)) -> geno_go_res
+# View(geno_go_res)
+
+read.table(
+  file = "/Users/benyoung/Dropbox/research/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/files_for_analysis/bingo_results/genet_lrt_0.001_clust_var_removed.bgo",
+  skip = 55,
+  stringsAsFactors = F,
+  sep = "\t",
+  header = T
+) %>%
+  separate_rows(Genes.in.test.set, sep = '\\|', convert = T) %>%
+  mutate(GO.ID_FULL = pad27(GO.ID)) %>%
+  dplyr::inner_join(
+    annot_filtered_2_15 %>%
+      dplyr::select(Count_ID, Gene.Annotation) %>%
+      dplyr::mutate(Count_ID = toupper(Count_ID)),
+    by = c("Genes.in.test.set" = "Count_ID")
+  ) %>%
+  dplyr::rename(., pvalue_GO = p.value) %>%
+  inner_join(LRT_geno_0.001 %>%
+               mutate(Genes.in.test.set = toupper(Count_ID))) %>%
+  dplyr::select(Count_ID, Gene.Annotation, GO.ID_FULL, 2:8, 19, 13:18) -> geno_lrt_GO_res_genes
+# View(geno_lrt_GO_res_genes)
+```
+
+```{r writing genet go results to csv files, include = F}
+# write.csv(geno_go_res,
+#           file = "/Users/benjamin.d.young/Dropbox/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/r_generated_files/geno_GO_res.csv")
+# write.csv(geno_lrt_GO_res_genes,
+#           file = "/Users/benjamin.d.young/Dropbox/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/r_generated_files/geno_GO_genes.csv")
+```
+
+
+###3.E.3 - Genet KEGG Enrichment Analysis
+
+```{r running enrichKEGG for the genet lrt significant genes, include = F}
+LRT_geno_0.001 %>% 
+  arrange(desc(log2FoldChange)) -> LRT_geno_0.001
+
+LRT_geno_0.01_kegg <- enrichKEGG(gene = LRT_geno_0.001$KEGG.ID..threshold.30, 
+                                  organism = 'ko', pvalueCutoff = 0.01)
+
+# View(as.data.frame(LRT_geno_0.01_kegg))
+as.data.frame(LRT_geno_0.01_kegg) %>% nrow()
+```
+
+```{r genes associated with enriched KEGG terms, echo = F}
+as.data.frame(LRT_geno_0.01_kegg) %>%
+  separate_rows(geneID, sep = '\\/', convert = T) %>%
+  dplyr::rename(., pvalue_KEGG = pvalue) %>%
+  inner_join(LRT_geno_0.001,
+             by = c("geneID" = "KEGG.ID..threshold.30")) -> LRT_geno_0.01_kegg_genes
+View(LRT_geno_0.01_kegg_genes)
+```
+
+```{r writing KEGG results to csv files, include = F}
+# write.csv(as.data.frame(LRT_geno_0.01_kegg),
+#           file = "/Users/benjamin.d.young/Dropbox/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/r_generated_files/LRT_geno_0.01_KEGG.csv")
+# write.csv(LRT_geno_0.01_kegg_genes,
+#           file = "/Users/benjamin.d.young/Dropbox/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/r_generated_files/LRT_geno_0.01_KEGG_genes.csv")
+```
+
+```{r generic plots from KEGG results, fig.width = 10, fig.height=16, echo = F}
+barplot(LRT_geno_0.01_kegg, showCategory = 100)
+dotplot(LRT_geno_0.01_kegg, showCategory=100)
+# cnetplot(LRT_geno_0.01_kegg, 
+#          circular = T, 
+#          color = T)
+
+emapplot(pairwise_termsim(LRT_geno_0.01_kegg),
+         showCategory = 100,
+         cex_label_category = 0.8,
+         cex_category = 1,
+         min_edge = 0.2,
+         layout = "nicely",
+         cex_line = 0.8)
+```
+
+
+###3.E.4 - Genet DEGPatterns Analysis
+####3.E.4.1 - Running DEGPatterns
+
+```{r prepping vst matrix for degpoatterns, echo = F}
+LRT_geno_0.001 %>%
+  column_to_rownames(var = "Count_ID") %>%
+  rownames() -> filt_4_degpattern_geno
+
+tfall %>% 
+  mutate(Genotype = as.factor(Genotype)) -> tfall
+
+ddsall <- DESeqDataSetFromMatrix(countData = cccall, 
+                                 colData = tfall, 
+                                 design = ~ reef + Samp_trip)
+vsdclus <- vst(ddsall)
+assay(vsdclus) <- limma::removeBatchEffect(assay(vsdclus),
+                                           batch = vsdgeno$clust)
+
+assay(vsdclus) %>%
+ as.data.frame() %>%
+ rownames_to_column(var = "genes") %>%
+ dplyr::filter(genes %in% filt_4_degpattern_geno) %>%
+ column_to_rownames(var = "genes") -> ma
+
+all(colnames(ma) == rownames(tfall))
+```
+
+```{r running degpatterns between the 4 genets, echo = F}
+# genet_degpattern <- degPatterns(ma,
+#                                 metadata = tfall,
+#                                 time = "Genotype",
+#                                 reduce = T)
+```
+
+```{r saving degpatterns as rdata object, include = F}
+# save(genet_degpattern,
+#     file = "/Users/benjamin.d.young/Desktop/POR_master/analysis/transcriptomic/r_saved_objects/genet_degpatterns.RData")
+```
+
+```{r loading degpatterns saved rdata object, include = F}
+load("/Users/benyoung/Dropbox/research/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/r_saved_objects/genet_degpatterns.RData")
+```
+
+```{r visualisation of genet degpatterns results, echo = F}
+degPlotCluster(genet_degpattern$normalized,
+               time = "Genotype",
+               points = F) +
+  theme_bw()
+
+degPlotCluster(genet_degpattern$normalized,
+               time = "Genotype",
+               points = F) +
+  theme_bw() +
+  facet_wrap( ~ cluster,
+              ncol = 2)
+```
+
+```{r LRT Cluster ggplot, echo = F, fig.width=14, fig.height=2.5}
+cluster_names <- c(
+                    `1` = "Cluster 1: 2,847 genes",
+                    `2` = "Cluster 2: 751 genes",
+                    `3` = "Cluster 3: 565 genes",
+                    `4` = "Cluster 4: 1,421 genes",
+                    `5` = "Cluster 5: 640 genes",
+                    `6` = "Cluster 6: 551 genes")
+
+ggplot(genet_degpattern$normalized,
+       aes(x = Genotype, y = value, color = Genotype)) +
+  geom_boxplot(aes(fill = Genotype),
+               alpha = 0.25,
+               outlier.size = 0, 
+               outlier.shape = NA) +
+  stat_smooth(
+    aes(
+      x = Genotype,
+      y = value,
+      group = Genotype,
+      color = Genotype
+    ),
+    se = FALSE,
+    method = "lm",
+    formula = y ~ poly(x, splan)
+  ) +
+  scale_color_manual(values = c("wheat3", "navy", "springgreen3", "grey60")) +
+  scale_fill_manual(values = c("wheat3", "navy", "springgreen3", "grey60")) +
+  # geom_line(
+  #   data = genet_degpattern$normalized %>%
+  #     group_by(Genotype, cluster) %>%
+  #     summarise(average = mean(value)) %>%
+  #     ungroup(),
+  #   mapping = aes(x = Genotype, y = average, group = 0),
+  #   color = "black"
+  # ) +
+  # geom_line(
+  #   data = genet_degpattern$normalized %>%
+  #     group_by(Genotype, cluster) %>%
+  #     summarise(average = mean(value)) %>%
+  #     ungroup(),
+  #   mapping = aes(x = Genotype, y = average, group = 0), 
+  #   color = "black"
+  # ) +
+  facet_wrap( ~ cluster, 
+              nrow = 1, 
+              labeller = as_labeller(cluster_names)) +
+  theme_bw() + 
+  theme(legend.position = "left") +
+  geom_hline(yintercept = 1, 
+             col = "grey50", 
+             linetype = 2, 
+             size = 0.3) +
+  geom_hline(yintercept = 0, 
+             col = "grey50", 
+             linetype = 2, 
+             size = 0.3) + 
+  geom_hline(yintercept = -1, 
+             col = "grey50", 
+             linetype = 2, 
+             size = 0.3)
+```
+
+```{r wiritng cluster results from genet degpatterns, include = F}
+genet_degpattern$df %>%
+  filter(cluster %in% c("1")) %>%
+  dplyr::inner_join(
+    annot_4_analysis %>%
+      dplyr::select(Gene.Annotation, Count_ID, KEGG.ID..threshold.30),
+    by = c("genes" = "Count_ID")
+  ) -> clus1
+
+genet_degpattern$df %>%
+  filter(cluster %in% c("2")) %>%
+  dplyr::inner_join(
+    annot_4_analysis %>%
+      dplyr::select(Gene.Annotation, Count_ID, KEGG.ID..threshold.30),
+    by = c("genes" = "Count_ID")
+  ) -> clus2
+
+genet_degpattern$df %>%
+  filter(cluster %in% c("3")) %>%
+  dplyr::inner_join(
+    annot_4_analysis %>%
+      dplyr::select(Gene.Annotation, Count_ID, KEGG.ID..threshold.30),
+    by = c("genes" = "Count_ID")
+  ) -> clus3
+
+genet_degpattern$df %>%
+  filter(cluster %in% c("4")) %>%
+  dplyr::inner_join(
+    annot_4_analysis %>%
+      dplyr::select(Gene.Annotation, Count_ID, KEGG.ID..threshold.30),
+    by = c("genes" = "Count_ID")
+  ) -> clus4
+
+genet_degpattern$df %>%
+  filter(cluster %in% c("5")) %>%
+  dplyr::inner_join(
+    annot_4_analysis %>%
+      dplyr::select(Gene.Annotation, Count_ID, KEGG.ID..threshold.30),
+    by = c("genes" = "Count_ID")
+  ) -> clus5
+
+genet_degpattern$df %>%
+  filter(cluster %in% c("6")) %>%
+  dplyr::inner_join(
+    annot_4_analysis %>%
+      dplyr::select(Gene.Annotation, Count_ID, KEGG.ID..threshold.30),
+    by = c("genes" = "Count_ID")
+  ) -> clus6
+```
+
+```{r writing csv files for each genert degpattern cluster, include = F}
+# write.csv(clus1,
+#           file = "/Users/benjamin.d.young/Dropbox/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/r_generated_files/genet_degpattern_clusters/genet_clus_1.csv")
+# 
+# write.csv(clus2,
+#           file = "/Users/benjamin.d.young/Dropbox/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/r_generated_files/genet_degpattern_clusters/genet_clus_2.csv")
+# 
+# write.csv(clus3,
+#           file = "/Users/benjamin.d.young/Dropbox/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/r_generated_files/genet_degpattern_clusters/genet_clus_3.csv")
+# 
+# write.csv(clus4,
+#           file = "/Users/benjamin.d.young/Dropbox/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/r_generated_files/genet_degpattern_clusters/genet_clus_4.csv")
+# 
+# write.csv(clus5,
+#           file = "/Users/benjamin.d.young/Dropbox/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/r_generated_files/genet_degpattern_clusters/genet_clus_5.csv")
+# 
+# write.csv(clus6,
+#           file = "/Users/benjamin.d.young/Dropbox/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/r_generated_files/genet_degpattern_clusters/genet_clus_6.csv")
+```
+
+
+####3.E.4.2 - GO Enrichment Analysis of Cluster Profiler Results
+
+Lines to skip
+Cluster 1 - 33
+Cluster 2 - 22
+Cluster 3 - 21
+Cluster 4 - 25
+Cluster 5 - NOTHING
+Cluster 6 - NOTHING
+
+```{r genet cluster GO enrichment results, echo = F}
+read.table(
+  file = "/Users/benyoung/Dropbox/research/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/files_for_analysis/bingo_results/clus1_genet.bgo",
+  skip = 33,
+  stringsAsFactors = F,
+  sep = "\t",
+  header = T
+) %>%
+  mutate(GO.ID_FULL = pad27(GO.ID)) -> clus1_GO_res
+
+read.table(
+  file = "/Users/benyoung/Dropbox/research/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/files_for_analysis/bingo_results/clus2_genet.bgo",
+  skip = 22,
+  stringsAsFactors = F,
+  sep = "\t",
+  header = T
+) %>%
+  mutate(GO.ID_FULL = pad27(GO.ID)) -> clus2_GO_res
+
+read.table(
+  file = "/Users/benyoung/Dropbox/research/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/files_for_analysis/bingo_results/clus3_genet.bgo",
+  skip = 21,
+  stringsAsFactors = F,
+  sep = "\t",
+  header = T
+) %>%
+  mutate(GO.ID_FULL = pad27(GO.ID)) -> clus3_GO_res
+
+read.table(
+  file = "/Users/benyoung/Dropbox/research/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/files_for_analysis/bingo_results/clus4_genet.bgo",
+  skip = 25,
+  stringsAsFactors = F,
+  sep = "\t",
+  header = T
+) %>%
+  mutate(GO.ID_FULL = pad27(GO.ID)) -> clus4_GO_res
+
+# read.table(
+#   file = "/Users/benjamin.d.young/Desktop/POR_master/analysis/transcriptomic/files_for_analysis/bingo_results/clus5_genet.bgo",
+#   skip = 22,
+#   stringsAsFactors = F,
+#   sep = "\t",
+#   header = T
+# ) %>%
+#   mutate(GO.ID_FULL = pad27(GO.ID)) -> clus5_GO_res
+
+# read.table(
+#   file = "/Users/benjamin.d.young/Desktop/POR_master/analysis/transcriptomic/files_for_analysis/bingo_results/clus6_genet.bgo",
+#   skip = 21,
+#   stringsAsFactors = F,
+#   sep = "\t",
+#   header = T
+# ) %>%
+#   mutate(GO.ID_FULL = pad27(GO.ID)) -> clus6_GO_res
+```
+
+```{r genet cluster genes to each GO result, include = F}
+read.table(
+  file = "/Users/benyoung/Dropbox/research/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/files_for_analysis/bingo_results/clus1_genet.bgo",
+  skip = 33,
+  stringsAsFactors = F,
+  sep = "\t",
+  header = T
+) %>%
+  separate_rows(Genes.in.test.set, sep = '\\|', convert = T) %>%
+  mutate(GO.ID_FULL = pad27(GO.ID)) %>%
+  dplyr::inner_join(
+    annot_filtered_2_15 %>%
+      dplyr::select(Count_ID, Gene.Annotation) %>%
+      dplyr::mutate(Count_ID = toupper(Count_ID)),
+    by = c("Genes.in.test.set" = "Count_ID")
+  ) %>%
+  dplyr::rename(., pvalue_GO = p.value) %>%
+  inner_join(LRT_geno_0.001 %>%
+               mutate(Genes.in.test.set = toupper(Count_ID))) %>%
+  dplyr::select(Count_ID, Gene.Annotation, GO.ID_FULL, 2:8, 19, 13:18) -> clus1_GO_res_genes
+
+read.table(
+  file = "/Users/benyoung/Dropbox/research/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/files_for_analysis/bingo_results/clus2_genet.bgo",
+  skip = 22,
+  stringsAsFactors = F,
+  sep = "\t",
+  header = T
+) %>%
+  separate_rows(Genes.in.test.set, sep = '\\|', convert = T) %>%
+  mutate(GO.ID_FULL = pad27(GO.ID)) %>%
+  dplyr::inner_join(
+    annot_filtered_2_15 %>%
+      dplyr::select(Count_ID, Gene.Annotation) %>%
+      dplyr::mutate(Count_ID = toupper(Count_ID)),
+    by = c("Genes.in.test.set" = "Count_ID")
+  ) %>%
+  dplyr::rename(., pvalue_GO = p.value) %>%
+  inner_join(LRT_geno_0.001 %>%
+               mutate(Genes.in.test.set = toupper(Count_ID))) %>%
+  dplyr::select(Count_ID, Gene.Annotation, GO.ID_FULL, 2:8, 19, 13:18) -> clus2_GO_res_genes
+
+read.table(
+  file = "/Users/benyoung/Dropbox/research/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/files_for_analysis/bingo_results/clus3_genet.bgo",
+  skip = 21,
+  stringsAsFactors = F,
+  sep = "\t",
+  header = T
+) %>% 
+  separate_rows(Genes.in.test.set, sep = '\\|', convert = T) %>%
+  mutate(GO.ID_FULL = pad27(GO.ID)) %>%
+  dplyr::inner_join(
+    annot_filtered_2_15 %>%
+      dplyr::select(Count_ID, Gene.Annotation) %>%
+      dplyr::mutate(Count_ID = toupper(Count_ID)),
+    by = c("Genes.in.test.set" = "Count_ID")
+  ) %>%
+  dplyr::rename(., pvalue_GO = p.value) %>%
+  inner_join(LRT_geno_0.001 %>%
+               mutate(Genes.in.test.set = toupper(Count_ID))) %>%
+  dplyr::select(Count_ID, Gene.Annotation, GO.ID_FULL, 2:8, 19, 13:18) -> clus3_GO_res_genes
+
+read.table(
+  file = "/Users/benyoung/Dropbox/research/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/files_for_analysis/bingo_results/clus4_genet.bgo",
+  skip = 25,
+  stringsAsFactors = F,
+  sep = "\t",
+  header = T
+) %>%
+  separate_rows(Genes.in.test.set, sep = '\\|', convert = T) %>%
+  mutate(GO.ID_FULL = pad27(GO.ID)) %>%
+  dplyr::inner_join(
+    annot_filtered_2_15 %>%
+      dplyr::select(Count_ID, Gene.Annotation) %>%
+      dplyr::mutate(Count_ID = toupper(Count_ID)),
+    by = c("Genes.in.test.set" = "Count_ID")
+  ) %>%
+  dplyr::rename(., pvalue_GO = p.value) %>%
+  inner_join(LRT_geno_0.001 %>%
+               mutate(Genes.in.test.set = toupper(Count_ID))) %>%
+  dplyr::select(Count_ID, Gene.Annotation, GO.ID_FULL, 2:8, 19, 13:18) -> clus4_GO_res_genes
+
+# read.table(
+#   file = "/Users/benjamin.d.young/Desktop/POR_master/analysis/transcriptomic/files_for_analysis/bingo_results/clus5_genet.bgo",
+#   skip = 22,
+#   stringsAsFactors = F,
+#   sep = "\t",
+#   header = T
+# ) %>%
+#   separate_rows(Genes.in.test.set, sep = '\\|', convert = T) %>%
+#   mutate(GO.ID_FULL = pad27(GO.ID)) %>%
+#   dplyr::inner_join(
+#     annot_filtered_2_15 %>%
+#       dplyr::select(Count_ID, Gene.Annotation) %>%
+#       dplyr::mutate(Count_ID = toupper(Count_ID)),
+#     by = c("Genes.in.test.set" = "Count_ID")
+#   ) %>%
+#   dplyr::rename(., pvalue_GO = p.value) %>%
+#   inner_join(LRT_geno_0.001 %>%
+#                mutate(Genes.in.test.set = toupper(Count_ID))) %>%
+#   dplyr::select(Count_ID, Gene.Annotation, GO.ID_FULL, 2:8, 19, 13:18) -> clus5_GO_res_genes
+
+# read.table(
+#   file = "/Users/benjamin.d.young/Desktop/POR_master/analysis/transcriptomic/files_for_analysis/bingo_results/clus6_genet.bgo",
+#   skip = 21,
+#   stringsAsFactors = F,
+#   sep = "\t",
+#   header = T
+# ) %>%
+#   separate_rows(Genes.in.test.set, sep = '\\|', convert = T) %>%
+#   mutate(GO.ID_FULL = pad27(GO.ID)) %>%
+#   dplyr::inner_join(
+#     annot_filtered_2_15 %>%
+#       dplyr::select(Count_ID, Gene.Annotation) %>%
+#       dplyr::mutate(Count_ID = toupper(Count_ID)),
+#     by = c("Genes.in.test.set" = "Count_ID")
+#   ) %>%
+#   dplyr::rename(., pvalue_GO = p.value) %>%
+#   inner_join(LRT_geno_0.001 %>%
+#                mutate(Genes.in.test.set = toupper(Count_ID))) %>%
+#   dplyr::select(Count_ID, Gene.Annotation, GO.ID_FULL, 2:8, 19, 13:18) -> clus6_GO_res_genes
+```
+
+```{r writing genet cluster results to csv, include = F}
+# write.csv(clus1_GO_res,
+#           file = "/Users/benjamin.d.young/Dropbox/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/r_generated_files/genet_degpattern_clusters/clus1_geno_GO_res.csv")
+# write.csv(clus1_GO_res_genes,
+#           file = "/Users/benjamin.d.young/Dropbox/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/r_generated_files/genet_degpattern_clusters/clus1_geno_GO_genes.csv")
+# 
+# write.csv(clus2_GO_res,
+#           file = "/Users/benjamin.d.young/Dropbox/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/r_generated_files/genet_degpattern_clusters/clus2_geno_GO_res.csv")
+# write.csv(clus2_GO_res_genes,
+#           file = "/Users/benjamin.d.young/Dropbox/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/r_generated_files/genet_degpattern_clusters/clus2_geno_GO_genes.csv")
+# 
+# write.csv(clus3_GO_res,
+#           file = "/Users/benjamin.d.young/Dropbox/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/r_generated_files/genet_degpattern_clusters/clus3_geno_GO_res.csv")
+# write.csv(clus3_GO_res_genes,
+#           file = "/Users/benjamin.d.young/Dropbox/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/r_generated_files/genet_degpattern_clusters/clus3_geno_GO_genes.csv")
+# 
+# write.csv(clus4_GO_res,
+#           file = "/Users/benjamin.d.young/Dropbox/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/r_generated_files/genet_degpattern_clusters/clus4_geno_GO_res.csv")
+# write.csv(clus4_GO_res_genes,
+#           file = "/Users/benjamin.d.young/Dropbox/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/r_generated_files/genet_degpattern_clusters/clus4_geno_GO_genes.csv")
+# 
+# # write.csv(clus5_GO_res,
+# #           file = "/Users/benjamin.d.young/Desktop/POR_master/analysis/transcriptomic/r_generated_files/genet_degpattern_clusters/clus5_geno_GO_res.csv")
+# # write.csv(clus5_GO_res_genes,
+# #           file = "/Users/benjamin.d.young/Desktop/POR_master/analysis/transcriptomic/r_generated_files/genet_degpattern_clusters/clus5_geno_GO_genes.csv")
+# 
+# # write.csv(clus6_GO_res,
+# #           file = "/Users/benjamin.d.young/Desktop/POR_master/analysis/transcriptomic/r_generated_files/genet_degpattern_clusters/clus6_geno_GO_res.csv")
+# # write.csv(clus6_GO_res_genes,
+# #           file = "/Users/benjamin.d.young/Desktop/POR_master/analysis/transcriptomic/r_generated_files/genet_degpattern_clusters/clus6_geno_GO_genes.csv")
+```
+
+
+####3.E.4.3 - KEGG Enrichment Analysis of Cluster Profiler Results
+
+```{r run KEGG enrichment for the genet cluster, include = F}
+clus1_enrichkegg <- enrichKEGG(gene = clus1$KEGG.ID..threshold.30, organism = 'ko', pvalueCutoff = 0.01)
+clus2_enrichkegg <- enrichKEGG(gene = clus2$KEGG.ID..threshold.30, organism = 'ko', pvalueCutoff = 0.01)
+clus3_enrichkegg <- enrichKEGG(gene = clus3$KEGG.ID..threshold.30, organism = 'ko', pvalueCutoff = 0.01)
+clus4_enrichkegg <- enrichKEGG(gene = clus4$KEGG.ID..threshold.30, organism = 'ko', pvalueCutoff = 0.01)
+clus5_enrichkegg <- enrichKEGG(gene = clus5$KEGG.ID..threshold.30, organism = 'ko', pvalueCutoff = 0.01)
+clus6_enrichkegg <- enrichKEGG(gene = clus6$KEGG.ID..threshold.30, organism = 'ko', pvalueCutoff = 0.01)
+```
+
+```{r viewing KEGG enriochment of genet clusters, echo = F}
+View(as.data.frame(clus1_enrichkegg))
+View(as.data.frame(clus2_enrichkegg))
+View(as.data.frame(clus3_enrichkegg))
+View(as.data.frame(clus4_enrichkegg))
+# View(as.data.frame(clus5_enrichkegg))
+View(as.data.frame(clus6_enrichkegg))
+```
+
+Ones with no enrichment at 0.01
+- Cluster 5
+
+```{r genes to each KEGG terms for genet clusters, include = F}
+as.data.frame(clus1_enrichkegg) %>%
+  separate_rows(geneID, sep = '\\/', convert = T) %>%
+  dplyr::rename(., pvalue_KEGG = pvalue) %>%
+  inner_join(LRT_geno_0.001,
+             by = c("geneID" = "KEGG.ID..threshold.30")) -> clus1_enrichkegg_genes
+
+as.data.frame(clus2_enrichkegg) %>%
+  separate_rows(geneID, sep = '\\/', convert = T) %>%
+  dplyr::rename(., pvalue_KEGG = pvalue) %>%
+  inner_join(LRT_geno_0.001,
+             by = c("geneID" = "KEGG.ID..threshold.30")) -> clus2_enrichkegg_genes
+
+as.data.frame(clus3_enrichkegg) %>%
+  separate_rows(geneID, sep = '\\/', convert = T) %>%
+  dplyr::rename(., pvalue_KEGG = pvalue) %>%
+  inner_join(LRT_geno_0.001,
+             by = c("geneID" = "KEGG.ID..threshold.30")) -> clus3_enrichkegg_genes
+
+as.data.frame(clus4_enrichkegg) %>%
+  separate_rows(geneID, sep = '\\/', convert = T) %>%
+  dplyr::rename(., pvalue_KEGG = pvalue) %>%
+  inner_join(LRT_geno_0.001,
+             by = c("geneID" = "KEGG.ID..threshold.30")) -> clus4_enrichkegg_genes
+
+# as.data.frame(clus5_enrichkegg) %>%
+#   separate_rows(geneID, sep = '\\/', convert = T) %>%
+#   dplyr::rename(., pvalue_KEGG = pvalue) %>%
+#   inner_join(LRT_geno_0.001,
+#              by = c("geneID" = "KEGG.ID..threshold.30")) -> clus5_enrichkegg_genes
+
+as.data.frame(clus6_enrichkegg) %>%
+  separate_rows(geneID, sep = '\\/', convert = T) %>%
+  dplyr::rename(., pvalue_KEGG = pvalue) %>%
+  inner_join(LRT_geno_0.001,
+             by = c("geneID" = "KEGG.ID..threshold.30")) -> clus6_enrichkegg_genes
+```
+
+```{r}
+clus1_enrichkegg_genes %>%
+  dplyr::filter(ID %in% c("ko05010", "ko05014", "ko05022", "ko05016", "ko05012", "ko05020")) %>%
+  dplyr::select(ID, Description, Count_ID, Gene.Annotation) %>% 
+  dplyr::mutate(cluster = "cluster_1") -> c1_nd
+
+clus3_enrichkegg_genes %>% 
+  dplyr::filter(ID %in% c("ko05014", "ko05022", "ko05016", "ko05012", "ko05020", "ko04723", "ko04714")) %>% 
+  dplyr::select(ID, Description, Count_ID, Gene.Annotation) %>% 
+  dplyr::mutate(cluster = "cluster_3") -> c3_nd
+
+clus4_enrichkegg_genes %>% 
+  dplyr::filter(ID %in% c("ko05014", "ko05022", "ko05016", "ko05012", "ko05020", "ko05010", "ko04714", "ko03050", "ko05208", 
+                          "ko05415")) %>% 
+  dplyr::select(ID, Description, Count_ID, Gene.Annotation) %>% 
+  dplyr::mutate(cluster = "cluster_4") -> c4_nd
+  
+clus6_enrichkegg_genes %>% 
+  dplyr::filter(ID %in% c("ko05010", "ko05014", "ko05022", "ko05016", "ko05020", "ko04723", "ko03050", "ko05208", 
+                          "ko05415", "ko00190")) %>% 
+  dplyr::select(ID, Description, Count_ID, Gene.Annotation) %>% 
+  dplyr::mutate(cluster = "cluster_6") -> c6_nd
+```
+
+```{r neurogen disease genes, }
+library(VennDiagram)
+str(c1_nd)
+venn::venn(list(c1_nd$Count_ID, c3_nd$Count_ID, c4_nd$Count_ID, c6_nd$Count_ID))
+
+test <-venn.diagram(
+  list(
+    c1_nd$Count_ID,
+    c3_nd$Count_ID,
+    c4_nd$Count_ID,
+    c6_nd$Count_ID
+  ),
+  filename = NULL,
+  category.names = c("Cluster 1" , "Cluster 3" , "Cluster 4", "Cluster 6"),
+  cex = 1,
+  cat.cex = 1,
+  lwd = 2,
+)
+
+## Have to run both of these at the same time for it to work !!!!!!!
+grid.newpage()
+grid.draw(test)
+```
+
+
+```{r KEGG barplots for significant KEGG enrichment genet clusters, fig.height=6, echo = F}
+barplot(clus1_enrichkegg, showCategory = 100)
+barplot(clus2_enrichkegg, showCategory = 100)
+barplot(clus3_enrichkegg, showCategory = 100)
+barplot(clus4_enrichkegg, showCategory = 100)
+# barplot(clus5_enrichkegg, showCategory = 100)
+barplot(clus6_enrichkegg, showCategory = 100)
+```
+
+```{r emaplots for significant KEGG enrichment genet clusters , fig.width=20, fig.height = 14, echo = F}
+emapplot(pairwise_termsim(clus1_enrichkegg), 
+         showCategory = 100, 
+         cex_label_category = 1.2, 
+         cex_category = 1.2, 
+         min_edge = 0.2, 
+         layout = "nicely", 
+         cex_line = 1)
+
+emapplot(pairwise_termsim(clus2_enrichkegg), 
+         showCategory = 100, 
+         cex_label_category = 1.2, 
+         cex_category = 1.2, 
+         min_edge = 0.2, 
+         layout = "nicely", 
+         cex_line = 1)
+
+emapplot(pairwise_termsim(clus3_enrichkegg), 
+         showCategory = 100, 
+         cex_label_category = 1.2, 
+         cex_category = 1.2, 
+         min_edge = 0.2, 
+         layout = "nicely", 
+         cex_line = 1)
+
+emapplot(pairwise_termsim(clus4_enrichkegg), 
+         showCategory = 100, 
+         cex_label_category = 1.2, 
+         cex_category = 1.2, 
+         min_edge = 0.2, 
+         layout = "nicely", 
+         cex_line = 1)
+
+# emapplot(pairwise_termsim(clus5_enrichkegg), 
+#          showCategory = 100, 
+#          cex_label_category = 1.2, 
+#          cex_category = 1.2, 
+#          min_edge = 0.2, 
+#          layout = "nicely", 
+#          cex_line = 1)
+
+emapplot(pairwise_termsim(clus6_enrichkegg), 
+         showCategory = 100, 
+         cex_label_category = 1.2, 
+         cex_category = 1.2, 
+         min_edge = 0.2, 
+         layout = "nicely", 
+         cex_line = 1)
+```
+
+#### 3.E.4.4 Pathways for the clusters 
+
+```{r pathways of neurodegeneration}
+browseKEGG(clus1_enrichkegg, 'ko05022')
+browseKEGG(clus3_enrichkegg, 'ko05022')
+browseKEGG(clus4_enrichkegg, 'ko05022')
+browseKEGG(clus6_enrichkegg, 'ko05022')
+```
+
+```{r writing KEGG results to csv files, include = F}
+# write.csv(as.data.frame(clus1_enrichkegg),
+#           file = "/Users/benjamin.d.young/Dropbox/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/r_generated_files/genet_degpattern_clusters/clus1_geno_KEGG_res.csv")
+# write.csv(clus1_enrichkegg_genes,
+#           file = "/Users/benjamin.d.young/Dropbox/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/r_generated_files/genet_degpattern_clusters/clus1_geno_KEGG_genes.csv")
+# 
+# write.csv(as.data.frame(clus2_enrichkegg),
+#           file = "/Users/benjamin.d.young/Dropbox/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/r_generated_files/genet_degpattern_clusters/clus3_geno_KEGG_res.csv")
+# write.csv(clus2_enrichkegg_genes,
+#           file = "/Users/benjamin.d.young/Dropbox/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/r_generated_files/genet_degpattern_clusters/clus3_geno_KEGG_genes.csv")
+# 
+# write.csv(as.data.frame(clus3_enrichkegg),
+#           file = "/Users/benjamin.d.young/Dropbox/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/r_generated_files/genet_degpattern_clusters/clus3_geno_KEGG_res.csv")
+# write.csv(clus3_enrichkegg_genes,
+#           file = "/Users/benjamin.d.young/Dropbox/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/r_generated_files/genet_degpattern_clusters/clus3_geno_KEGG_genes.csv")
+# 
+# write.csv(as.data.frame(clus4_enrichkegg),
+#           file = "/Users/benjamin.d.young/Dropbox/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/r_generated_files/genet_degpattern_clusters/clus4_geno_KEGG_res.csv")
+# write.csv(clus4_enrichkegg_genes,
+#           file = "/Users/benjamin.d.young/Dropbox/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/r_generated_files/genet_degpattern_clusters/clus4_geno_KEGG_genes.csv")
+# 
+# # write.csv(as.data.frame(clus5_enrichkegg),
+# #           file = "/Users/benjamin.d.young/Desktop/POR_master/analysis/transcriptomic/r_generated_files/genet_degpattern_clusters/clus4_geno_KEGG_res.csv")
+# # write.csv(clus5_enrichkegg_genes,
+# #           file = "/Users/benjamin.d.young/Desktop/POR_master/analysis/transcriptomic/r_generated_files/genet_degpattern_clusters/clus4_geno_KEGG_genes.csv")
+# 
+# write.csv(as.data.frame(clus6_enrichkegg),
+#           file = "/Users/benjamin.d.young/Dropbox/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/r_generated_files/genet_degpattern_clusters/clus6_geno_KEGG_res.csv")
+# write.csv(clus6_enrichkegg_genes,
+#           file = "/Users/benjamin.d.young/Dropbox/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/r_generated_files/genet_degpattern_clusters/clus6_geno_KEGG_genes.csv")
+```
+
+
+##3.F - WGCNA Analysis with Genet Variance Removed
+###3.F.1 - WGCNA Pipeline
+
+```{r SUPER DUPER IMPORTANT FOR WGCNA TO DO THIS, include = F}
+options(stringsAsFactors = FALSE)
+```
+
+```{r making alltraits object for WGCNA, echo = F}
+tfall %>% 
+  rownames_to_column(var = "BN_salmon") %>%
+  group_by(Samp_trip, reef) %>% 
+  inner_join(read.csv(file = "/Users/benyoung/Dropbox/research/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/spreadsheets_for_analysis/reef_sampledate_temps_4_wgcna.csv")) %>% 
+  ungroup() %>% 
+  column_to_rownames(var = "BN_salmon") -> tfall
+
+read.csv(file = "/Users/benyoung/Dropbox/research/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/spreadsheets_for_analysis/reef_sampledate_temps_4_wgcna.csv")
+
+tfall %>% 
+  rownames_to_column(var = "samps") %>%
+  dplyr::select(samps, Samp_trip, reef, ClusterDepth, temperature_celcius) %>%
+  column_to_rownames(var = "samps") -> WGCNA_treat_cato
+# View(WGCNA_treat_cato)
+
+model.matrix(~Samp_trip-1, WGCNA_treat_cato) %>% 
+  as.data.frame() %>%
+  rownames_to_column(var = "Sample_numbers") %>% 
+  full_join(model.matrix(~reef-1, WGCNA_treat_cato) %>% 
+              as.data.frame() %>% 
+              rownames_to_column(var = "Sample_numbers")) %>% 
+  inner_join(tfall %>% 
+               rownames_to_column(var = "Sample_numbers") %>% 
+               dplyr::select(Sample_numbers, ClusterDepth, temperature_celcius)) %>% 
+  column_to_rownames(var = "Sample_numbers") -> allTraits
+# tfall
+View(allTraits)
+```
+
+```{r}
+WGCNA_treat_cato %>% 
+  group_by(Samp_trip, reef) %>%
+  summarise(temp = temperature_celcius)
+```
+
+
+```{r VST with limma removing genet variance, include = F}
+ddsall <- DESeqDataSetFromMatrix(countData = cccall, 
+                                 colData = tfall, 
+                                 design = ~ reef + Samp_trip)
+
+vsdgeno <- vst(ddsall)
+assay(vsdgeno) <- limma::removeBatchEffect(assay(vsdgeno), 
+                                           batch = vsdgeno$clust, 
+                                           batch2 = vsdgeno$Genotype)
+```
+
+```{r Genes for WGCNA and checking they all a-okay, echo = F}
+genes4wgcna <- assay(vsdgeno)
+genes4wgcna <- t(genes4wgcna)
+genes4wgcna <- as.data.frame(genes4wgcna)
+nrow(genes4wgcna)
+dim(genes4wgcna)
+
+gsg = goodSamplesGenes(genes4wgcna, verbose = 3)
+gsg$allOK
+```
+
+Everything is all good re samples and gene counts for WGCNA, yay. 
+
+```{r Checking for outliers, fig.height=20, fig.width=20, echo = F}
+sampleTree = hclust(dist(genes4wgcna), method = "ward.D2");
+
+sizeGrWindow(12,9)
+par(cex = 1);
+par(mar = c(0,4,2,0))
+plot(sampleTree, 
+     main = "Sample clustering to detect outliers", 
+     sub="", 
+     xlab="", 
+     cex.lab = 1.5,
+cex.axis = 1.5, cex.main = 2)
+abline(h = 500, col = "red");
+clust = cutreeStatic(sampleTree, cutHeight = 500, minSize = 10)
+table(clust)
+```
+
+```{r removal of the outlier samples}
+# clust 1 contains the samples we want to keep.
+keepSamples = (clust==1)
+datExpr = genes4wgcna[keepSamples, ]
+nGenes = ncol(datExpr)
+nSamples = nrow(datExpr)
+```
+
+```{r checking wgcna object and allTraits march up, echo = F}
+head(allTraits)
+str(allTraits)
+# View(allTraits)
+# rownames(allTraits) = allTraits$Sample_numbers
+# allTraits$Sample_numbers = NULL
+table(rownames(allTraits)==rownames(genes4wgcna)) #should return TRUE if datasets align correctly, otherwise your names are out of order
+```
+
+```{r reordering tfall with count table after filtering of both objects, echo = F}
+matchup <- match(rownames(tfall), colnames(POR_counts))
+POR_counts  <- POR_counts[,matchup ]
+all(rownames(tfall) == colnames(POR_counts))
+```
+
+```{r Identyfying Soft Power, echo = F}
+# Choose a set of soft-thresholding powers
+powers = c(c(1:10), seq(from = 12, to=20, by=2))
+# Call the network topology analysis function
+sft = pickSoftThreshold(
+  datExpr,
+  powerVector = powers,
+  verbose = 5,
+  dataIsExpr = T,
+  networkType = "signed"
+)
+# Plot the results:
+sizeGrWindow(9, 5)
+par(mfrow = c(1,2));
+cex1 = 0.9;
+# Scale-free topology fit index as a function of the soft-thresholding power
+plot(sft$fitIndices[,1], -sign(sft$fitIndices[,3])*sft$fitIndices[,2],
+xlab="Soft Threshold (power)",ylab="Scale Free Topology Model Fit,signed R^2",type="n",
+main = paste("Scale independence"));
+text(sft$fitIndices[,1], -sign(sft$fitIndices[,3])*sft$fitIndices[,2],
+labels=powers,cex=cex1,col="red");
+# this line corresponds to using an R^2 cut-off of h
+abline(h=0.85,col="red")
+# Mean connectivity as a function of the soft-thresholding power
+plot(sft$fitIndices[,1], sft$fitIndices[,5],
+xlab="Soft Threshold (power)",ylab="Mean Connectivity", type="n",
+main = paste("Mean connectivity"))
+text(sft$fitIndices[,1], sft$fitIndices[,5], labels=powers, cex=cex1,col="red")
+```
+
+```{r Signed adjacency matrix using soft power from last step, include = F}
+softPower = 8;
+adjacency = adjacency(datExpr, 
+                      type="signed", 
+                      power = softPower);
+```
+
+```{r Generation of topological overlap, efcho = F}
+# Turn adjacency into topological overlap
+TOM = TOMsimilarity(adjacency, 
+                    TOMType = "signed");
+dissTOM = 1-TOM
+```
+
+```{r Gene clustering with TOM-based dissimilarity plot, echo = F}
+# Call the hierarchical clustering function
+geneTree = hclust(as.dist(dissTOM), 
+                  method = "average");
+# Plot the resulting clustering tree (dendrogram)
+sizeGrWindow(12,9)
+plot(geneTree, 
+     xlab="", 
+     sub="", 
+     main = "Gene clustering on TOM-based dissimilarity",
+labels = FALSE, hang = 0.04);
+```
+
+```{r Module identification, echo = F}
+# We like large modules, so we set the minimum module size relatively high:
+minModuleSize = 30;
+# Module identification using dynamic tree cut:
+dynamicMods = cutreeDynamic(dendro = geneTree, 
+                            distM = dissTOM,
+                            deepSplit = 2,
+                            pamRespectsDendro = FALSE, 
+                            minClusterSize = minModuleSize);
+table(dynamicMods)
+```
+
+```{r Gene dendogram and module colours plot, echo = F}
+# Convert numeric lables into colors
+dynamicColors = labels2colors(dynamicMods)
+table(dynamicColors)
+# Plot the dendrogram and colors underneath
+sizeGrWindow(8,6)
+plotDendroAndColors(geneTree, 
+                    dynamicColors, 
+                    "Dynamic Tree Cut", 
+                    dendroLabels = FALSE, 
+                    hang = 0.03,
+                    addGuide = TRUE, 
+                    guideHang = 0.05, 
+                    main = "Gene dendrogram and module colors")
+```
+
+```{r Merging similar modules, fig.height=6, fig.width=10, echo = F}
+# Calculate eigengenes
+MEList = moduleEigengenes(datExpr, 
+                          colors = dynamicColors)
+MEs = MEList$eigengenes
+# Calculate dissimilarity of module eigengenes
+MEDiss = 1-cor(MEs);
+# Cluster module eigengenes
+METree = hclust(as.dist(MEDiss), 
+                method = "average");
+# Plot the result
+sizeGrWindow(7, 6)
+
+plot(METree, 
+     main = "Clustering of module eigengenes",
+     xlab = "", 
+     sub = "")
+MEDissThres = 0.25
+# Plot the cut line into the dendrogram
+abline(h=MEDissThres, col = "red")
+# Call an automatic merging function
+merge = mergeCloseModules(datExpr, 
+                          dynamicColors, 
+                          cutHeight = MEDissThres, 
+                          verbose = 3)
+# The merged module colors
+mergedColors = merge$colors;
+# Eigengenes of the new merged modules:
+mergedMEs = merge$newMEs;
+```
+
+```{r Cluster dendogram with original and merged modules, fig.height=3, fig.width=10, echo = F}
+sizeGrWindow(12, 5)
+#pdf(file = "Plots/geneDendro-3.pdf", wi = 9, he = 6)
+plotDendroAndColors(geneTree, 
+                    cbind(dynamicColors, 
+                          mergedColors), 
+                    c("Dynamic Tree Cut", "Merged dynamic"), 
+                    dendroLabels = FALSE, 
+                    hang = 0.03, 
+                    addGuide = TRUE, 
+                    guideHang = 0.05)
+#dev.off()
+```
+
+```{r Eigengenes for each sample to each module, echo = F}
+# Rename to moduleColors
+moduleColors = mergedColors
+# Construct numerical labels corresponding to the colors
+colorOrder = c("grey", 
+               standardColors(50));
+moduleLabels = match(moduleColors, 
+                     colorOrder)-1
+MEs = mergedMEs
+MEs
+```
+
+```{r module correlation and significance to correaltions, echo = F}
+# Define numbers of genes and samples
+nGenes = ncol(datExpr);
+nSamples = nrow(datExpr);
+# Recalculate MEs with color labels
+MEs0 = moduleEigengenes(datExpr, 
+                        moduleColors)$eigengenes
+MEs = orderMEs(MEs0)
+moduleTraitCor = cor(MEs, 
+                     allTraits, 
+                     use = "p");
+moduleTraitPvalue = corPvalueStudent(moduleTraitCor, 
+                                     nSamples);
+```
+
+```{r wgcna generic heatmap plot, echo = F}
+sizeGrWindow(10,6)
+# Will display correlations and their p-values
+textMatrix = paste(signif(moduleTraitCor, 2), "\n(",
+signif(moduleTraitPvalue, 1), ")", sep = "");
+dim(textMatrix) = dim(moduleTraitCor)
+par(mar = c(6, 8.5, 3, 3));
+# Display the correlation values within a heatmap plot
+labeledHeatmap(Matrix = moduleTraitCor,
+xLabels = names(allTraits),
+yLabels = names(MEs),
+ySymbols = names(MEs),
+colorLabels = FALSE,
+colors = blueWhiteRed(50),
+textMatrix = textMatrix,
+setStdMargins = FALSE,
+cex.text = 0.5,
+zlim = c(-1,1),
+cex.lab = 0.5,
+main = paste("Module-trait relationships"))
+```
+
+```{r Hub genes for modules, echo = F}
+tophub <- chooseTopHubInEachModule(genes4wgcna,
+                                   moduleColors,
+                                   omitColors = "grey",
+                                   power = 10)
+
+tophub %>% 
+  as.data.frame() %>% 
+  rename(., "Count_ID" = 1) %>% 
+  rownames_to_column(var="mod_colours") %>% 
+  inner_join(annot_filtered_2_15 %>% 
+               dplyr::select(Count_ID, Gene.Annotation)) -> tophub_annotated
+# View(tophub_annotated)
+
+# write.csv(tophub_annotated,
+#          file = "/Users/benjamin.d.young/Dropbox/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/r_generated_files/wgcna/hub_genes_annotated.csv",
+#          row.names = F)
+```
+
+```{r apply function to save wgcna megaframe and write all results to csv files, include = F}
+mod_list <- tophub_annotated$mod_colours
+
+mod_fun <- function(e) {names(genes4wgcna)[moduleColors == e] %>%
+  as.data.frame() %>% 
+  rename(Count_ID = 1) %>% 
+  inner_join(annot_4_analysis %>% 
+               dplyr::select(Count_ID, Gene.Annotation, 6:21)) %>% 
+    mutate(module = e) -> f
+#  write.csv(f, file = paste0("/Users/benjamin.d.young/Dropbox/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/r_generated_files/wgcna/", e, ".csv"))
+  f
+}
+  
+plyr::ldply(mod_list, 
+            mod_fun) -> wgcna_megaframe
+```
+
+do.call = runs a function which runs a function for every iteration of the output. 
+
+do.call("rbind", .)
+use ldply to make a dataframe
+
+Nick uses a megaframe, and then just dplyr:filters for things
+
+```{r genes in modules, echo = F}
+wgcna_megaframe %>% 
+  group_by(module) %>% 
+  summarise(count = n())
+```
+
+
+###3.F.2 - Complex Heatmap and Bargraph of Gene Counts
+
+```{r complex heatmap prep, echo = F}
+textMatrix %>%
+  as.data.frame() -> tmatrix_ch
+
+moduleTraitCor %>%
+  as.data.frame() %>% 
+  rownames_to_column(var = "modcol") %>%
+  dplyr::filter(!modcol %in% "MEgrey") %>% 
+  column_to_rownames(var = "modcol") %>%
+  t() %>% 
+  as.data.frame() %>% 
+  rownames_to_column(var = "remove") %>%
+  dplyr::select(-remove) %>%
+  mutate(
+    Row_annotations = c(
+      "Trip 2",
+      "Trip 3",
+      "Trip 4",
+      "Trip 5",
+      "Carysfort Reef",
+      "North Dry Rocks",
+      "Pickles Reef",
+      "Cluster Depth", 
+      "SST Temperature (celcius)"
+    )
+  ) %>%
+  column_to_rownames(var = "Row_annotations") %>%
+  t() %>%
+  as.data.frame() -> modtraitcor_ch
+
+allTraits %>% 
+  as.data.frame() -> alltrait_ch
+```
+
+```{r Complex heatmap prep for WGCNA analysis, include = F}
+# data.frame(rownames(modtraitcor_ch)) %>% 
+#   rename(Modules = 1) %>% 
+#   mutate(colours = str_replace_all(Modules, "ME", "")) %>% 
+#   deframe() -> colcol1
+
+data.frame(rownames(modtraitcor_ch)) -> ccann
+ccann <- data.frame(rownames(modtraitcor_ch))
+colnames(ccann) <- c("Modules")
+colcol <- list("Modules" = c("MEbrown" = "brown", "MEpurple" = "purple", "MEcyan" = "cyan",
+                             "MEred" = "red", "MEgrey60" = "grey60", "MElightyellow" = "lightyellow", 
+                             "MEblack" = "black", "MEmidnightblue" = "midnightblue", "MEgreenyellow" = "greenyellow", 
+                             "MEturquoise" = "turquoise", "MElightcyan" = "lightcyan", "MEmagenta" = "magenta", 
+                             "MEblue" = "blue", "MEpink" = "pink", "MElightgreen" = "lightgreen"))
+
+samname <- HeatmapAnnotation(
+  df = ccann,
+  col = colcol,
+  which = "row",
+  simple_anno_size = unit(0.5, "cm"),
+  annotation_name_gp = gpar(fontsize = 10),
+  show_annotation_name = F
+)
+
+col_fun = blueWhiteRed(50)
+col_fun = colorRamp2(c(-1, 0, 1), c("blue", "white", "red"))
+```
+
+```{r WGCNA complex heatmap, echo = F, fig.width = 7, fig.height=4}
+Heatmap(
+  modtraitcor_ch %>%
+    as.matrix(),
+  cluster_rows = F,
+  cluster_columns = F,
+  left_annotation = samname, 
+  row_names_side = "left",
+  column_names_rot = 45,
+  col = col_fun,
+  cell_fun = function(j, i, x, y, width, height, fill) {
+    grid.text(sprintf(tmatrix_ch[i, j]), x, y, gp = gpar(fontsize = 9))
+  },
+  column_split = data.frame(rep(c("a", "b", "c"), c(4, 3, 2))),
+  column_gap = unit(0.3, "cm"))
+```
+
+
+purple - 2
+black - 7
+lightcyan - 11
+
+red - 4
+lightyellow - 6
+midnightblue - 8 
+turquoise - 10 
+
+cyan - 3
+greenyellow - 9
+grey60 - 5
+
+```{r complex heatmap dataframes with correct columns, include = F}
+textMatrix %>%
+  as.data.frame() %>% 
+  dplyr::slice(2, 7, 11, 4, 6, 8, 10, 3, 9, 5) %>%
+  dplyr::select(1, 2, 3, 4, 9, 5, 6, 7, 8) -> tmatrix_ch
+
+moduleTraitCor %>%
+  as.data.frame() %>% 
+  dplyr::select(1, 2, 3, 4, 9, 5, 6, 7, 8) %>%
+  rownames_to_column(var = "modcol") %>%
+  dplyr::filter(!modcol %in% "MEgrey") %>% 
+  column_to_rownames(var = "modcol") %>%
+  t() %>% 
+  as.data.frame() %>% 
+  rownames_to_column(var = "remove") %>%
+  dplyr::select(-remove) %>%
+  mutate(
+    Row_annotations = c(
+      "Trip 2",
+      "Trip 3",
+      "Trip 4",
+      "Trip 5",
+      "SST Temperature",
+      "Carysfort Reef",
+      "North Dry Rocks",
+      "Pickles Reef",
+      "Cluster Depth"
+    )
+  ) %>%
+  column_to_rownames(var = "Row_annotations") %>% 
+  dplyr::select(MEpurple, MEblack, MElightcyan, MEred, MElightyellow, MEmidnightblue, MEturquoise, MEcyan, MEgreenyellow, MEgrey60) %>% 
+  t() %>%
+  as.data.frame() -> modtraitcor_ch
+
+allTraits %>% 
+  as.data.frame() -> alltrait_ch
+```
+
+```{r Complex heatmap prep for WGCNA analysis, include =}
+data.frame(rownames(modtraitcor_ch)) -> ccann
+ccann <- data.frame(rownames(modtraitcor_ch))
+colnames(ccann) <- c("Modules")
+colcol <- list("Modules" = c("MEpurple" = "Purple",
+    "MEblack" = "Black",
+    "MElightcyan" = "Light Cyan",
+    "MEred" = "Red",
+    "MElightyellow" = "Light Yellow",
+    "MEmidnightblue" = "Midnight Blue",
+    "MEturquoise" = "Turquoise",
+    "MEcyan" = "Cyan",
+    "MEgreenyellow" = "Green Yellow",
+    "MEgrey60" = "Grey 60"
+    ))
+
+samname <- HeatmapAnnotation(
+  df = ccann,
+  col = colcol,
+  which = "row",
+  simple_anno_size = unit(0.5, "cm"),
+  annotation_name_gp = gpar(fontsize = 10),
+  show_annotation_name = F
+)
+
+col_fun = blueWhiteRed(50)
+col_fun = colorRamp2(c(-1, 0, 1), c("blue", "white", "red"))
+```
+
+```{r WGCNA complex heatmap, echo = F, fig.width = 10, fig.height=8}
+Heatmap(
+  modtraitcor_ch %>%
+    as.matrix(),
+  cluster_rows = F,
+  cluster_columns = F,
+  left_annotation = samname, 
+  row_names_side = "left",
+  column_names_rot = 45,
+  col = col_fun,
+  cell_fun = function(j, i, x, y, width, height, fill) {
+    grid.text(sprintf(tmatrix_ch[i, j]), x, y, gp = gpar(fontsize = 9))
+  },
+  column_split = data.frame(rep(c("a", "b", "c"), c(5, 3, 1))),
+  row_split = data.frame(rep(c("a", "b", "c"), c(3, 4, 3))),
+  column_gap = unit(0.3, "cm"), 
+  row_gap = unit(0.3, "cm"))
+```
+
+```{r}
+View(wgcna_megaframe)
+```
+
+```{r gene count heatmap prep, include = F}
+gene_bg <-
+  cbind(c(
+nrow(wgcna_megaframe %>% dplyr::filter(module %in% "purple")),
+nrow(wgcna_megaframe %>% dplyr::filter(module %in% "black")),
+nrow(wgcna_megaframe %>% dplyr::filter(module %in% "lightcyan")),
+nrow(wgcna_megaframe %>% dplyr::filter(module %in% "red")),
+nrow(wgcna_megaframe %>% dplyr::filter(module %in% "lightyellow")),
+nrow(wgcna_megaframe %>% dplyr::filter(module %in% "midnightblue")),
+nrow(wgcna_megaframe %>% dplyr::filter(module %in% "turquoise")),
+nrow(wgcna_megaframe %>% dplyr::filter(module %in% "cyan")),
+nrow(wgcna_megaframe %>% dplyr::filter(module %in% "greenyellow")),
+nrow(wgcna_megaframe %>% dplyr::filter(module %in% "grey60"))
+  ))
+colnames(gene_bg) <- c("genes")
+rownames(gene_bg) <-
+  c(
+    "Purple",
+    "Black",
+    "Light Cyan",
+    "Red", 
+    "Light Yellow", 
+    "Midnight Blue", 
+    "Turquoise", 
+    "Cyan",
+    "Green Yellow",
+    "Grey 60"
+  )
+gene_bg %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "module") -> gene_bg
+gene_bg$module <-
+  factor(
+    gene_bg$module,
+    c(
+    "Purple",
+    "Black",
+    "Light Cyan",
+    "Red", 
+    "Light Yellow", 
+    "Midnight Blue", 
+    "Turquoise", 
+    "Cyan",
+    "Green Yellow",
+    "Grey 60"
+    )
+  )
+
+str(gene_bg)
+View(gene_bg)
+```
+
+```{r fucntion for reverse log transformation, include = F}
+reverselog_trans <- function(base = exp(1)) {
+    trans <- function(x) -log(x, base)
+    inv <- function(x) base^(-x)
+    trans_new(paste0("reverselog-", format(base)), trans, inv, 
+              log_breaks(base = base), 
+              domain = c(1e-100, Inf))
+}
+```
+
+```{r bargraph of genes for MM heatmap, fig.height=5, fig.width = 9}
+ggplot(data = gene_bg, (aes(module, genes, fill = module))) +
+  geom_bar(
+    stat = "identity",
+    fill = c(
+    "Purple",
+    "Black",
+    "Light Cyan",
+    "Red", 
+    "Light Yellow", 
+    "Midnight Blue", 
+    "Turquoise", 
+    "Cyan",
+    "Green Yellow",
+    "Grey 60"
+    ),
+    position = "dodge"
+  ) +
+  theme_classic() +
+  theme(
+    strip.text.x = element_blank(),
+    panel.border = element_blank(),
+    axis.line.x = element_blank(),
+    axis.line = element_line(),
+    axis.title.y = element_blank(),
+    axis.line.y = element_blank(),
+    legend.position = "none",
+    text = element_text(size = 15)
+  )  +
+  scale_y_continuous(position = "left",
+                     trans = "log10")
+```
+
+
+
+###3.F.3 - GO Enrichment of Modules
+
+Lines to Skip 
+Blue - 24
+Cyan - 19
+Green - 21
+Greenyellow - 25
+Grey60 - 19
+Lightcyan - 21
+Lightgreen - 19
+Lightyellow - 19 (no significant GO enrichment)
+Magenta - 20 (no significant GO enrichment)
+Midnightblue - 19
+Purple - 26
+Salmon - 19
+Turquoise - 56
+
+
+
+```{r}
+#set grep for header value and set to skip. 
+# 
+# read.table(
+#   file = "/Users/benjamin.d.young/Desktop/POR_master/analysis/transcriptomic/files_for_analysis/bingo_results/wgcna_e_module.bgo",
+#   skip = 24,
+#   stringsAsFactors = F,
+#   sep = "\t",
+#   header = T
+# ) %>%
+#   mutate(GO.ID_FULL = pad27(GO.ID)) -> a
+# a %>% 
+#   separate_rows(Genes.in.test.set, sep = '\\|', convert = T) %>%
+#   mutate(GO.ID_FULL = pad27(GO.ID)) %>%
+#   dplyr::inner_join(
+#     annot_filtered_2_15 %>%
+#       dplyr::select(Count_ID, Gene.Annotation) %>%
+#       dplyr::mutate(Count_ID = toupper(Count_ID)),
+#     by = c("Genes.in.test.set" = "Count_ID")
+#   ) %>%
+#   dplyr::rename(., pvalue_GO = p.value) -> b
+# write.csv(a, file = paste0("/Users/benjamin.d.young/Desktop/POR_master/analysis/transcriptomic/r_generated_files/wgcna/", e, "gores_.csv"))
+# write.csv(b, file = paste0("/Users/benjamin.d.young/Desktop/POR_master/analysis/transcriptomic/r_generated_files/wgcna/", e, "goresgenes.csv"))
+# a
+# b
+```
+
+
+```{r reading in go results and writing csv and making a megaframe, include = F}
+setwd("/Users/benyoung/Dropbox/research/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/files_for_analysis/bingo_results//")
+wgcna_go_Res_files <- list.files(pattern = "^wgcna")
+
+wgcna_go_Res_fun <-
+  function(e) {
+    modcols <- str_remove(e, "_0\\.01\\.bgo") %>%
+      str_remove(., "wgcna_")
+    temp <- readLines(e)
+    linesToSkip <- grep("^GO-ID", temp) - 1
+    read.table(
+      text = temp,
+      skip = linesToSkip,
+      stringsAsFactors = F,
+      sep = "\t",
+      header = T
+    ) %>%
+      dplyr::mutate(module = modcols) %>%
+      mutate(GO.ID_FULL = pad27(GO.ID)) -> f
+    write.csv(
+      f,
+      file = paste0(
+        "/Users/benjamin.d.young/Dropbox/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/r_generated_files/wgcna/go_res_", modcols,
+        ".csv"
+      )
+    )
+    f
+  }
+
+plyr::ldply(wgcna_go_Res_files, 
+            wgcna_go_Res_fun) -> wgcna_go_res_megaframe
+```
+
+```{r reading in go results and expanding by genes and writing csv and making a megaframe, include = F}
+setwd("/Users/benyoung/Dropbox/research/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/files_for_analysis/bingo_results//")
+wgcna_go_Res_files <- list.files(pattern = "^wgcna")
+
+wgcna_go_Res_genes_fun <-
+  function(e) {
+    modcols <- str_remove(e, "_0\\.01\\.bgo") %>%
+      str_remove(., "wgcna_")
+    temp <- readLines(e)
+    linesToSkip <- grep("^GO-ID", temp) - 1
+    read.table(
+      text = temp,
+      skip = linesToSkip,
+      stringsAsFactors = F,
+      sep = "\t",
+      header = T
+    ) %>%
+      dplyr::mutate(module = modcols) %>%
+      separate_rows(Genes.in.test.set, sep = '\\|', convert = T) %>% 
+      mutate(GO.ID_FULL = pad27(GO.ID), 
+             Genes.in.test.set = as.character(Genes.in.test.set)) %>%
+      dplyr::inner_join(annot_filtered_2_15 %>%
+          dplyr::select(Count_ID, Gene.Annotation) %>%
+          dplyr::mutate(Count_ID = toupper(Count_ID)),
+        by = c("Genes.in.test.set" = "Count_ID")) %>%
+      dplyr::rename(., pvalue_GO = p.value) -> f
+    write.csv(f, file = paste0("/Users/benjamin.d.young/Dropbox/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/r_generated_files/wgcna/go_genes_res_", modcols, ".csv"))
+    f
+  }
+
+plyr::ldply(wgcna_go_Res_files, 
+            wgcna_go_Res_genes_fun) -> wgcna_go_genes_res_megaframe
+```
+
+
+###3.F.4 - KEGG Enrichment of Modules
+
+```{r running kegg making dataframes and writing to csv, include = F}
+mod_list <- tophub_annotated$mod_colours
+
+kegg_fun <- function(e) {
+  mods <- wgcna_megaframe %>% 
+    dplyr::filter(module %in% e)
+  enrichKEGG(
+    gene = mods$KEGG.ID..threshold.30,
+    organism = 'ko',
+    pvalueCutoff = 0.01
+  ) %>%
+    as.data.frame() %>% 
+    mutate(module = e) -> kegg
+  write.csv(kegg, file = paste0("/Users/benjamin.d.young/Dropbox/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/r_generated_files/wgcna/kegg_res_", e, ".csv"))
+  kegg
+}
+  
+plyr::ldply(mod_list, 
+            kegg_fun) -> kegg_res_megaframe
+
+# View(kegg_res_megaframe)
+kegg_res_megaframe %>% 
+  group_by(module) %>% summarise(count = n())
+```
+
+10 have enrichment, thus 5 do not, what 5?
+- grey60
+- lightgreen
+- lightyellow
+- midnightblue
+- pink
+
+```{r}
+kegg_res_megaframe %>% 
+  group_by(module) %>% 
+  summarise() %>% 
+  ungroup() %>% 
+  column_to_rownames(var = "module") %>% 
+  rownames() -> keggmods
+
+kegggenefun <- function(e) {
+  kegg_res_megaframe %>% 
+    dplyr::filter(module %in% e) %>%
+    separate_rows(geneID, sep = '\\/', convert = T) %>%
+    dplyr::rename(., pvalue_KEGG = pvalue) %>% 
+    inner_join(annot_4_analysis %>% 
+                 dplyr::select(Count_ID, Gene.Annotation, 6:21),
+               by = c("geneID" = "KEGG.ID..threshold.30")) -> f
+    write.csv(f, file = paste0("/Users/benjamin.d.young/Dropbox/NOAA_postdoc/projects/POR_master/analysis/transcriptomic/r_generated_files/wgcna/kegg_res_genes_", e, ".csv"))
+  f
+}
+
+plyr::ldply(keggmods, 
+            kegggenefun) -> kegg_res_genes_megaframe
+View(kegg_res_genes_megaframe)
+```
+
+
+### 3.F.5 - Module trait significance plots. 
+
+```{r making dataframes for module trait significance plots}
+# Define variable weight containing the weight column of datTrait
+temperature_celcius = as.data.frame(allTraits$temperature_celcius)
+names(temperature_celcius) = "temperature_celcius"
+# names (colors) of the modules
+modNames = substring(names(MEs), 3)
+
+geneModuleMembership = as.data.frame(cor(datExpr, MEs, use = "p"));
+MMPvalue = as.data.frame(corPvalueStudent(as.matrix(geneModuleMembership), nSamples));
+
+names(geneModuleMembership) = paste("MM", modNames, sep="");
+names(MMPvalue) = paste("p.MM", modNames, sep="");
+
+geneTraitSignificance = as.data.frame(cor(datExpr, temperature_celcius, use = "p"));
+GSPvalue = as.data.frame(corPvalueStudent(as.matrix(geneTraitSignificance), nSamples));
+
+names(geneTraitSignificance) = paste("GS.", names(temperature_celcius), sep="");
+names(GSPvalue) = paste("p.GS.", names(temperature_celcius), sep="");
+```
+
+```{r, black mod significance plot}
+module = "black"
+column = match(module, modNames);
+moduleGenes = moduleColors==module;
+
+
+sizeGrWindow(7, 7);
+par(mfrow = c(1,1));
+verboseScatterplot(abs(geneModuleMembership[moduleGenes, column]),
+                   abs(geneTraitSignificance[moduleGenes, 1]),
+                   xlab = paste("Module Membership in", module, "module"),
+                   ylab = "Gene significance for SST",
+                   main = paste("Module membership vs. gene significance\n"),
+                   cex.main = 1.2, cex.lab = 1.2, cex.axis = 1.2, col = "black", 
+                   abline = T)
+# 
+# geneTraitSignificance %>%
+#   rownames_to_column(var="Gene.ID") %>%
+#   full_join(geneModuleMembership %>%
+#               rownames_to_column(var = "Gene.ID") %>%
+#               dplyr::select(MMblack, MMlightcyan, MMmidnightblue, MMturquoise, MMgrey60, Gene.ID)) %>%
+#   tidyr::gather(module, module_membership, MMblack:MMgrey60) %>%
+#   ggplot(aes(module_membership, GS.temperature_celcius, color = module)) +
+#   geom_point(size = 2, alpha = 20/100) +
+#   geom_smooth(color="black", method = lm, se = T, fill = "grey") +
+#   theme_classic() +
+#   ylim(c(-1,1)) +
+#   xlim(c(-1,1)) +
+#   scale_color_manual(values=c("black", "skyblue", "midnightblue", "turquoise", "grey60")) +
+#   facet_wrap(~module, scales = "free") +
+#   theme(strip.text.x = element_blank()) +
+#   theme(panel.border=element_blank(), axis.line=element_line(), legend.position = "none") +
+#   labs(x="Module Membership",
+#        y="Gene Significance for OISST SST")
+```
+
+```{r, lightcyan mod significance plot}
+module = "lightcyan"
+column = match(module, modNames);
+moduleGenes = moduleColors==module;
+
+
+sizeGrWindow(7, 7);
+par(mfrow = c(1,1));
+verboseScatterplot(abs(geneModuleMembership[moduleGenes, column]),
+                   abs(geneTraitSignificance[moduleGenes, 1]),
+                   xlab = paste("Module Membership in", module, "module"),
+                   ylab = "Gene significance for SST",
+                   main = paste("Module membership vs. gene significance\n"),
+                   cex.main = 1.2, cex.lab = 1.2, cex.axis = 1.2, col = "skyblue", abline = T)
+```
+
+```{r, midnightblue mod significance plot}
+module = "midnightblue"
+column = match(module, modNames);
+moduleGenes = moduleColors==module;
+
+
+sizeGrWindow(7, 7);
+par(mfrow = c(1,1));
+verboseScatterplot(abs(geneModuleMembership[moduleGenes, column]),
+                   abs(geneTraitSignificance[moduleGenes, 1]),
+                   xlab = paste("Module Membership in", module, "module"),
+                   ylab = "Gene significance for SST",
+                   main = paste("Module membership vs. gene significance\n"),
+                   cex.main = 1.2, cex.lab = 1.2, cex.axis = 1.2, col = "midnightblue", abline = T)
+```
+
+```{r, turquoise mod significance plot}
+module = "turquoise"
+column = match(module, modNames);
+moduleGenes = moduleColors==module;
+
+
+sizeGrWindow(7, 7);
+par(mfrow = c(1,1));
+verboseScatterplot(abs(geneModuleMembership[moduleGenes, column]),
+                   abs(geneTraitSignificance[moduleGenes, 1]),
+                   xlab = paste("Module Membership in", module, "module"),
+                   ylab = "Gene significance for SST",
+                   main = paste("Module membership vs. gene significance\n"),
+                   cex.main = 1.2, cex.lab = 1.2, cex.axis = 1.2, col = "turquoise", abline = T)
+```
+
+```{r, grey60 mod significance plot}
+module = "grey60"
+column = match(module, modNames);
+moduleGenes = moduleColors==module;
+
+
+sizeGrWindow(7, 7);
+par(mfrow = c(1,1));
+verboseScatterplot(abs(geneModuleMembership[moduleGenes, column]),
+                   abs(geneTraitSignificance[moduleGenes, 1]),
+                   xlab = paste("Module Membership in", module, "module"),
+                   ylab = "Gene significance for SST",
+                   main = paste("Module membership vs. gene significance\n"),
+                   cex.main = 1.2, cex.lab = 1.2, cex.axis = 1.2, col = "grey60", abline = T)
+```
+
+
+
+
