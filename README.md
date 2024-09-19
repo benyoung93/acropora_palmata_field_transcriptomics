@@ -8,4 +8,9 @@ Folder *rscripts* has the following
 - *POR_seq_depth.Rmd* = script to work out alignment rates of the samples
 - *differing_filt_thresholds.Rmd* = PCA analysis of the sample using different filtering thresholds as requested by reviewer 2. 
 
+Folder *rdata_objects* has the objects needed to run entire pipeline
+
+Folder *images* holds images for this readme. 
+
+
 
