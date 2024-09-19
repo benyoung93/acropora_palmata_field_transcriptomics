@@ -8,11 +8,11 @@ Folder **rscripts** has the following
 - *POR_seq_depth.Rmd* = script to work out alignment rates of the samples
 - *differing_filt_thresholds.Rmd* = PCA analysis of the sample using different filtering thresholds as requested by reviewer 2. 
 
-Folder *rdata_objects* has the objects needed to run entire pipeline.  
+Folder **rdata_objects** has the objects needed to run entire pipeline.  
   
-Folder *images* holds images for this readme.  
+Folder **images** holds images for this readme.  
   
-Folder **spreadsheets* has spreadsheets needed within the rscripts. 
+Folder **spreadsheets** has spreadsheets needed within the rscripts. 
   
   
 ![alt text](https://github.com/benyoung93/acropora_palmata_field_transcriptomics/blob/main/figs/filt_5countsgene_allsamples.png)
