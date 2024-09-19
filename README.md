@@ -14,3 +14,10 @@ Folder *images* holds images for this readme.
 
 
 ![alt text](https://github.com/benyoung93/acropora_palmata_field_transcriptomics/blob/main/figs/filt_5countsgene_allsamples.png)
+
+**Figure 1**: Using filtering criteria of 5 counts per gene in all samples retains the identified surrogate variable and genet being the main driver of the variance.   
+
+
+![alt text](https://github.com/benyoung93/acropora_palmata_field_transcriptomics/blob/main/figs/filt_10countsgene_80percentsamples.png)
+
+**Figure 2**: Using filtering criteria of 10 counts per gene in 80% of samples again retains the identified surrogate variable and genet being the main driver of the variance.
