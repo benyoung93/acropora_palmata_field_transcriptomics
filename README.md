@@ -13,4 +13,4 @@ Folder *rdata_objects* has the objects needed to run entire pipeline
 Folder *images* holds images for this readme. 
 
 
-
+![alt text](https://github.com/benyoung93/acropora_palmata_field_transcriptomics/blob/main/figs/filt_5countsgene_allsamples.png)
